@@ -44,7 +44,7 @@ class FaultEngine:
         baseline_checks: list[Check] | None = None,
     ) -> None:
         self.session = session
-        self.clock: Clock = clock if clock is not None else SystemClock()
+        self.clock: Clock = clock if clock is not None else getattr(session, "clock", SystemClock())
         self.inventory: Inventory = inventory or session.inventory
         self.state_file = state_file
         self.baseline_checks = baseline_checks or []
@@ -75,12 +75,11 @@ class FaultEngine:
             logger.info("Injecting %s config on %s: %s", fault.id, r_name, commands)
             self.session.push_config(r_name, commands, reason=f"inject {fault.id}")
 
-        # Update mock devices scenario if applicable
-        for r_name in fault.inject:
-            dev = self.session.devices.get(r_name)
-            if dev is not None and hasattr(dev, "set_scenario"):
+        # Update mock devices scenario across all session routers
+        for dev in self.session.devices.values():
+            if hasattr(dev, "set_scenario"):
                 dev.set_scenario(f"faulted/{fault.id}")
-            elif dev is not None and hasattr(dev, "scenario"):
+            elif hasattr(dev, "scenario"):
                 dev.scenario = f"faulted/{fault.id}"
 
         # Record in state file
@@ -103,12 +102,11 @@ class FaultEngine:
             logger.info("Reverting %s on %s: %s", fault.id, r_name, commands)
             self.session.push_config(r_name, commands, reason=f"revert {fault.id}")
 
-        # Update mock devices scenario back to baseline
-        for r_name in fault.revert:
-            dev = self.session.devices.get(r_name)
-            if dev is not None and hasattr(dev, "set_scenario"):
+        # Update mock devices scenario back to baseline across all session routers
+        for dev in self.session.devices.values():
+            if hasattr(dev, "set_scenario"):
                 dev.set_scenario("baseline")
-            elif dev is not None and hasattr(dev, "scenario"):
+            elif hasattr(dev, "scenario"):
                 dev.scenario = "baseline"
 
         # Settle network

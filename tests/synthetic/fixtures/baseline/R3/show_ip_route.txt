@@ -1,0 +1,1 @@
+Codes: C - connected, S - static, R - RIP, M - mobile, B - BGP

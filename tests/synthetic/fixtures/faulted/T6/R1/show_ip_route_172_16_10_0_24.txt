@@ -1,0 +1,6 @@
+Routing entry for 172.16.10.0/24
+  Known via "eigrp 100", distance 170, metric 1308160, type external
+  Route tag 200
+  Routing Descriptor Blocks:
+  * 10.1.13.2, from 10.1.13.2, 02:14:20 ago, via GigabitEthernet3
+      Route metric is 1308160, traffic share count is 1

@@ -1,0 +1,49 @@
+{
+  "fault_id": "T2",
+  "title": "EIGRP seed metric omitted on R2",
+  "qualified": true,
+  "runs": [
+    {
+      "run_number": 1,
+      "baseline_pre_passed": true,
+      "fault_checks_pre_passed": true,
+      "inject_failed_checks": [
+        "c_t2_r1_10",
+        "c_t2_r1_20"
+      ],
+      "revert_passed": true,
+      "baseline_post_passed": true,
+      "duration_s": 0.03,
+      "success": true
+    },
+    {
+      "run_number": 2,
+      "baseline_pre_passed": true,
+      "fault_checks_pre_passed": true,
+      "inject_failed_checks": [
+        "c_t2_r1_10",
+        "c_t2_r1_20"
+      ],
+      "revert_passed": true,
+      "baseline_post_passed": true,
+      "duration_s": 0.03,
+      "success": true
+    },
+    {
+      "run_number": 3,
+      "baseline_pre_passed": true,
+      "fault_checks_pre_passed": true,
+      "inject_failed_checks": [
+        "c_t2_r1_10",
+        "c_t2_r1_20"
+      ],
+      "revert_passed": true,
+      "baseline_post_passed": true,
+      "duration_s": 0.03,
+      "success": true
+    }
+  ],
+  "observed_symptom": "Qualified symptom observed",
+  "total_duration_s": 0.1,
+  "generated_at": "2026-11-16T21:17:27.091728+00:00"
+}

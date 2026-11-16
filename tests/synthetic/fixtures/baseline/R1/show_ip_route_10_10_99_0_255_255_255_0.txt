@@ -1,0 +1,5 @@
+Routing entry for 10.10.99.0/24
+  Known via "connected", distance 0, metric 0 (connected, via interface)
+  Routing Descriptor Blocks:
+  * directly connected, via Loopback99
+      Route count is 1, list sub-block of 1

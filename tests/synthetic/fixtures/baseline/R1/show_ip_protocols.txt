@@ -1,0 +1,2 @@
+Routing Protocol is "eigrp 100"
+Routing Protocol is "ospf 1"

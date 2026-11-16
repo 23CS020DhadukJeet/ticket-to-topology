@@ -1,0 +1,4 @@
+route-map VENDOR-CONN, permit, sequence 10
+  Match clauses:
+    interface Loopback99
+  Set clauses:

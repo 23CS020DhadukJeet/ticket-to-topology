@@ -1,0 +1,49 @@
+{
+  "fault_id": "T10",
+  "title": "Wrong interface in connected-redistribution route-map on R1",
+  "qualified": true,
+  "runs": [
+    {
+      "run_number": 1,
+      "baseline_pre_passed": true,
+      "fault_checks_pre_passed": true,
+      "inject_failed_checks": [
+        "c_t10_r2_route",
+        "c_t10_r4_route"
+      ],
+      "revert_passed": true,
+      "baseline_post_passed": true,
+      "duration_s": 0.03,
+      "success": true
+    },
+    {
+      "run_number": 2,
+      "baseline_pre_passed": true,
+      "fault_checks_pre_passed": true,
+      "inject_failed_checks": [
+        "c_t10_r2_route",
+        "c_t10_r4_route"
+      ],
+      "revert_passed": true,
+      "baseline_post_passed": true,
+      "duration_s": 0.03,
+      "success": true
+    },
+    {
+      "run_number": 3,
+      "baseline_pre_passed": true,
+      "fault_checks_pre_passed": true,
+      "inject_failed_checks": [
+        "c_t10_r2_route",
+        "c_t10_r4_route"
+      ],
+      "revert_passed": true,
+      "baseline_post_passed": true,
+      "duration_s": 0.03,
+      "success": true
+    }
+  ],
+  "observed_symptom": "Qualified symptom observed",
+  "total_duration_s": 0.09,
+  "generated_at": "2026-11-16T21:17:26.995946+00:00"
+}

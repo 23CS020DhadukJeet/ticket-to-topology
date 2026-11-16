@@ -4,11 +4,15 @@ import os
 import sys
 from pathlib import Path
 
-import yaml
-from dotenv import load_dotenv
-from netmiko import ConnectHandler
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
-from t2t.devices.slug import slug
+import yaml  # noqa: E402
+from dotenv import load_dotenv  # noqa: E402
+from netmiko import ConnectHandler  # noqa: E402
+
+from t2t.devices.slug import slug  # noqa: E402
 
 PHASE_1_COMMANDS = [
     "show version",
@@ -78,12 +82,30 @@ def capture_router(
 
 def main() -> None:
     """Run capture against all routers in inventory."""
+    if "--mock" in sys.argv:
+        print(
+            "Mock mode requested: generating synthetic demo fixtures without a virtual machine..."
+        )
+        from lab.scripts.generate_synthetic_fixtures import (
+            generate_baseline_fixtures,
+            generate_faulted_fixtures,
+        )
+
+        generate_baseline_fixtures()
+        generate_faulted_fixtures()
+        print("Done! You can now use all commands offline with --replay.")
+        return
+
     load_dotenv()
     username = os.getenv("LAB_USERNAME", "admin")
     password = os.getenv("LAB_PASSWORD", "")
 
     if not password:
         print("Error: LAB_PASSWORD must be set in .env to capture fixtures.", file=sys.stderr)
+        print(
+            "Tip: If running without a virtual machine, "
+            "run 'python lab/scripts/capture_fixtures.py --mock'."
+        )
         sys.exit(1)
 
     inv_path = Path("lab/inventory.yaml")
@@ -99,6 +121,7 @@ def main() -> None:
     defaults = inventory.get("defaults", {})
     routers = inventory.get("routers", [])
     output_base = Path("tests/fixtures/baseline")
+    captured_count = 0
 
     for router in routers:
         try:
@@ -109,8 +132,17 @@ def main() -> None:
                 password=password,
                 output_dir=output_base,
             )
+            captured_count += 1
         except Exception as err:
             print(f"Failed capturing {router.get('name')}: {err}", file=sys.stderr)
+
+    if captured_count == 0:
+        print(
+            "\nNote: All router connections failed. If you do not have a virtual machine running,\n"
+            "run 'python lab/scripts/capture_fixtures.py --mock' to generate demo fixtures"
+            " for --replay mode.",
+            file=sys.stderr,
+        )
 
 
 if __name__ == "__main__":

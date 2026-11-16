@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from t2t.clock import Clock, SystemClock
+from t2t.clock import Clock, FakeClock, SystemClock
 from t2t.config import Inventory, Settings, load_inventory, load_settings
 from t2t.devices.base import Device
 from t2t.devices.mock_device import MockDevice
@@ -36,7 +36,12 @@ class DeviceSession:
         self.replay = replay
         self.scenario = scenario
         self.fixtures_root = fixtures_root
-        self.clock: Clock = clock if clock is not None else SystemClock()
+        if clock is not None:
+            self.clock = clock
+        elif replay:
+            self.clock = FakeClock()
+        else:
+            self.clock = SystemClock()
 
         self.devices: dict[str, Device] = {}
         self.command_log: list[tuple[float, str, str, str]] = []

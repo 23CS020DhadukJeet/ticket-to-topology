@@ -123,8 +123,14 @@ def qualify_fault(
 
         # 5. Capture if requested
         if capture and run_idx == 1:
+            target_fixtures_root = (
+                Path("tests/synthetic/fixtures")
+                if getattr(engine.session, "replay", False)
+                and fixtures_root == Path("tests/fixtures")
+                else fixtures_root
+            )
             router_names = [r.name for r in engine.inventory.routers]
-            _capture_router_fixtures(engine.session, fault.id, fixtures_root, router_names)
+            _capture_router_fixtures(engine.session, fault.id, target_fixtures_root, router_names)
 
             # Build observed symptom summary
             symptom_parts = []

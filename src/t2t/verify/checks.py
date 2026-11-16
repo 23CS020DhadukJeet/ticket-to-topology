@@ -23,6 +23,7 @@ class RoutePresentParams(BaseModel):
     tag: int | None = None
     min_paths: int | None = None
     next_hops_include: list[str] | None = None
+    route_type: str | None = None
 
 
 class RouteAbsentParams(BaseModel):
@@ -149,6 +150,28 @@ def execute_route_present(check: Check, session: Any, clock: Clock) -> CheckResu
             observed=f"tag={route.tag}",
             message=msg,
         )
+
+    # Check route type
+    if params.route_type is not None:
+        expected_rt = params.route_type.lower()
+        actual_rt = route.route_type.lower()
+        rt_matches = (
+            expected_rt in actual_rt
+            or (expected_rt == "e2" and "extern 2" in actual_rt)
+            or (expected_rt == "e1" and "extern 1" in actual_rt)
+        )
+        if not rt_matches:
+            msg = (
+                f"{check.router}: prefix {prefix_str} route type is '{route.route_type}', "
+                f"expected '{params.route_type}'."
+            )
+            return CheckResult(
+                check_id=check.id,
+                passed=False,
+                expected=f"route_type={params.route_type}",
+                observed=f"route_type={route.route_type}",
+                message=msg,
+            )
 
     # Check min paths
     if params.min_paths is not None and len(route.next_hops) < params.min_paths:
