@@ -1,0 +1,17 @@
+.venv/
+.env
+lab/golden/rendered/
+*.db
+reports/
+.coverage
+htmlcov/
+__pycache__/
+*.pyc
+*.egg-info/
+.t2t/
+logs/
+dist/
+site/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
