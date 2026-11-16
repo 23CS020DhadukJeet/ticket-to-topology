@@ -27,6 +27,7 @@ packages = ["src/t2t"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src", "."]
 addopts = "-m 'not lab' -ra"
 markers = [
   "lab: needs the live 4-router lab (run with: pytest -m lab)",

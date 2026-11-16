@@ -1,5 +1,6 @@
 .venv/
 .env
+lab/inventory.yaml
 lab/golden/rendered/
 *.db
 reports/

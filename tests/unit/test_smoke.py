@@ -32,11 +32,11 @@ def test_version_fallback() -> None:
         assert _get_version() == "0.1.0"
 
 
-def test_doctor_stub() -> None:
-    """Verify stub doctor command returns exit code 0."""
+def test_doctor_help() -> None:
+    """Verify doctor command --help returns exit code 0."""
     from t2t.cli.app import app
 
     runner = CliRunner()
-    result = runner.invoke(app, ["doctor"])
+    result = runner.invoke(app, ["doctor", "--help"])
     assert result.exit_code == 0
-    assert "not implemented yet" in result.output
+    assert "Check connectivity and environment health" in result.output
