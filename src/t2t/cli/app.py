@@ -299,16 +299,21 @@ def reset(
     baseline_path = Path("src/t2t/faults/baseline.yaml")
     baseline_checks = load_baseline_checks(baseline_path) if baseline_path.exists() else []
 
-    with DeviceSession(
-        inventory=inventory, settings=settings, read_only=False, replay=replay
-    ) as session:
-        engine = FaultEngine(
-            session=session,
-            inventory=inventory,
-            baseline_checks=baseline_checks,
-        )
-        console.print("[bold cyan]Resetting routers to golden configuration...[/bold cyan]")
-        statuses = engine.reset_lab(baseline_checks=baseline_checks)
+    statuses: dict[str, Any] = {}
+    try:
+        with DeviceSession(
+            inventory=inventory, settings=settings, read_only=False, replay=replay
+        ) as session:
+            engine = FaultEngine(
+                session=session,
+                inventory=inventory,
+                baseline_checks=baseline_checks,
+            )
+            console.print("[bold cyan]Resetting routers to golden configuration...[/bold cyan]")
+            statuses = engine.reset_lab(baseline_checks=baseline_checks)
+    except T2TError as err:
+        console.print(f"[bold red]Reset failed:[/bold red] {err}")
+        raise typer.Exit(code=err.exit_code) from err
 
     table = Table(title="Lab Reset Results", show_lines=True)
     table.add_column("Router", style="bold cyan")
@@ -421,34 +426,38 @@ def qualify(
             raise typer.Exit(code=1)
         targets = {fault: catalog[fault]}
 
-    with DeviceSession(
-        inventory=inventory, settings=settings, read_only=False, replay=replay
-    ) as session:
-        engine = FaultEngine(
-            session=session,
-            inventory=inventory,
-            baseline_checks=baseline_checks,
-        )
+    reports: list[Any] = []
+    try:
+        with DeviceSession(
+            inventory=inventory, settings=settings, read_only=False, replay=replay
+        ) as session:
+            engine = FaultEngine(
+                session=session,
+                inventory=inventory,
+                baseline_checks=baseline_checks,
+            )
 
-        reports = []
-        if all_faults:
-            reports = qualify_all(
-                catalog=targets,
-                engine=engine,
-                baseline_checks=baseline_checks,
-                runs=runs,
-                capture=capture,
-            )
-        elif fault is not None:
-            single_fault = targets[fault]
-            rep = qualify_fault(
-                fault=single_fault,
-                engine=engine,
-                baseline_checks=baseline_checks,
-                runs=runs,
-                capture=capture,
-            )
-            reports = [rep]
+            if all_faults:
+                reports = qualify_all(
+                    catalog=targets,
+                    engine=engine,
+                    baseline_checks=baseline_checks,
+                    runs=runs,
+                    capture=capture,
+                )
+            elif fault is not None:
+                single_fault = targets[fault]
+                rep = qualify_fault(
+                    fault=single_fault,
+                    engine=engine,
+                    baseline_checks=baseline_checks,
+                    runs=runs,
+                    capture=capture,
+                )
+                reports = [rep]
+    except T2TError as err:
+        console.print(f"[bold red]Qualification error:[/bold red] {err}")
+        raise typer.Exit(code=err.exit_code) from err
 
     table = Table(title="Fault Qualification Summary", show_lines=True)
     table.add_column("Fault", style="bold cyan")

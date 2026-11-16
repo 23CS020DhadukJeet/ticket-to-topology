@@ -97,8 +97,19 @@ def qualify_fault(
         logger.info("Starting qualification run %d/%d for fault %s", run_idx, runs, fault.id)
 
         # 1. Reset lab & verify baseline
-        engine.reset_lab(baseline_checks)
-        results_pre_base, pre_base_passed = run_all(baseline_checks, engine.session, engine.clock)
+        pre_reset = engine.reset_lab(baseline_checks)
+        resets_ok = all(s.success for s in pre_reset.values())
+        if not resets_ok:
+            logger.warning(
+                "Qualification run %d: Reset failed on routers: %s",
+                run_idx,
+                [r for r, s in pre_reset.items() if not s.success],
+            )
+            pre_base_passed = False
+        else:
+            results_pre_base, pre_base_passed = run_all(
+                baseline_checks, engine.session, engine.clock
+            )
 
         # 2. Assert all fault checks pass on baseline (precondition)
         results_pre_fault, pre_fault_passed = run_all(fault.checks, engine.session, engine.clock)
@@ -132,8 +143,14 @@ def qualify_fault(
         )
 
         # 8. Reset lab & verify baseline
-        engine.reset_lab(baseline_checks)
-        results_post_base, post_base_passed = run_all(baseline_checks, engine.session, engine.clock)
+        post_reset = engine.reset_lab(baseline_checks)
+        post_resets_ok = all(s.success for s in post_reset.values())
+        if not post_resets_ok:
+            post_base_passed = False
+        else:
+            results_post_base, post_base_passed = run_all(
+                baseline_checks, engine.session, engine.clock
+            )
 
         run_duration = round(time.perf_counter() - r_start, 2)
         run_success = (

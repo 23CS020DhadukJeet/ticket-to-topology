@@ -194,8 +194,8 @@ class FaultEngine:
                 replace_path,
             )
 
-        # Wait for baseline if checks available
-        if target_checks:
+        # Wait for baseline if checks available and reset succeeded on all routers
+        if target_checks and not failed_routers:
             try:
                 wait_for_baseline(self.session, self.clock, target_checks, timeout=180.0)
             except Exception as err:
