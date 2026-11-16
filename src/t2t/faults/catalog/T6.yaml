@@ -1,0 +1,44 @@
+id: T6
+title: Route-map implicit deny on R2
+level: 3
+symptom_class: redundancy
+objectives: [route-map, implicit-deny, route-filtering]
+inject:
+  R2:
+    - no route-map OSPF-TO-EIGRP permit 20
+revert:
+  R2:
+    - route-map OSPF-TO-EIGRP permit 20
+    - match ip address prefix-list HQ-NETS
+    - set tag 200
+flows:
+  - src: 10.10.1.1
+    dst: 172.16.10.1
+    note: Branch to HQ traffic flow
+business_context: All traffic from branch to HQ is traversing R3 only; R2 is not participating in HQ route redistribution.
+root_cause: Permit clause 20 was deleted from route-map OSPF-TO-EIGRP on R2, causing all OSPF prefixes to hit the implicit deny.
+key_concepts: [route-map, implicit-deny, redistribution]
+checks:
+  - id: c_t6_r1_10
+    kind: route_present
+    router: R1
+    prefix: 172.16.10.0/24
+    params:
+      protocol: eigrp
+      min_paths: 2
+      next_hops_include: [10.1.12.2, 10.1.13.2]
+    desc: R1 reaches 172.16.10.0/24 via both ASBRs
+  - id: c_t6_r1_20
+    kind: route_present
+    router: R1
+    prefix: 172.16.20.16/28
+    params:
+      protocol: eigrp
+      min_paths: 2
+      next_hops_include: [10.1.12.2, 10.1.13.2]
+    desc: R1 reaches 172.16.20.16/28 via both ASBRs
+hints:
+  1: R1 is not receiving any HQ routes via ASBR R2.
+  2: Check the route-map applied to redistribution from OSPF into EIGRP on R2.
+  3: On R2 run show route-map OSPF-TO-EIGRP and notice that only a deny clause remains.
+observed_symptom: ""

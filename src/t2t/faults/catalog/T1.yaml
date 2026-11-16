@@ -1,0 +1,96 @@
+id: T1
+title: Loop prevention stripped on ASBRs
+level: 4
+symptom_class: latent
+objectives: [mutual-redistribution, route-tagging, administrative-distance]
+inject:
+  R2:
+    - no route-map EIGRP-TO-OSPF deny 10
+    - no route-map OSPF-TO-EIGRP deny 10
+    - router ospf 1
+    - no distance ospf external 171
+  R3:
+    - no route-map EIGRP-TO-OSPF deny 10
+    - no route-map OSPF-TO-EIGRP deny 10
+    - router ospf 1
+    - no distance ospf external 171
+revert:
+  R2:
+    - route-map EIGRP-TO-OSPF deny 10
+    - match tag 200
+    - route-map OSPF-TO-EIGRP deny 10
+    - match tag 100
+    - router ospf 1
+    - distance ospf external 171
+  R3:
+    - route-map EIGRP-TO-OSPF deny 10
+    - match tag 200
+    - route-map OSPF-TO-EIGRP deny 10
+    - match tag 100
+    - router ospf 1
+    - distance ospf external 171
+flows:
+  - src: 172.16.10.10
+    dst: 10.10.99.1
+    note: HQ to Vendor subnet traffic
+business_context: Periodic network audits indicate routing integrity risks across boundary routers during topology changes.
+root_cause: Route-tag deny clauses and OSPF external AD override were removed from ASBRs R2 and R3, removing mutual redistribution loop protection.
+key_concepts: [route-tagging, mutual-redistribution, administrative-distance, loop-prevention]
+checks:
+  - id: c_t1_r2_rm1
+    kind: routemap_clause
+    router: R2
+    params:
+      name: EIGRP-TO-OSPF
+      seq: 10
+      action: deny
+      match: {tag: "200"}
+    desc: R2 denies routes tagged 200 during EIGRP to OSPF redistribution
+  - id: c_t1_r2_rm2
+    kind: routemap_clause
+    router: R2
+    params:
+      name: OSPF-TO-EIGRP
+      seq: 10
+      action: deny
+      match: {tag: "100"}
+    desc: R2 denies routes tagged 100 during OSPF to EIGRP redistribution
+  - id: c_t1_r3_rm1
+    kind: routemap_clause
+    router: R3
+    params:
+      name: EIGRP-TO-OSPF
+      seq: 10
+      action: deny
+      match: {tag: "200"}
+    desc: R3 denies routes tagged 200 during EIGRP to OSPF redistribution
+  - id: c_t1_r3_rm2
+    kind: routemap_clause
+    router: R3
+    params:
+      name: OSPF-TO-EIGRP
+      seq: 10
+      action: deny
+      match: {tag: "100"}
+    desc: R3 denies routes tagged 100 during OSPF to EIGRP redistribution
+  - id: c_t1_r2_route
+    kind: route_present
+    router: R2
+    prefix: 10.10.99.0/24
+    params:
+      protocol: eigrp
+      distance: 170
+    desc: R2 maintains external EIGRP route for vendor network
+  - id: c_t1_r3_route
+    kind: route_present
+    router: R3
+    prefix: 10.10.99.0/24
+    params:
+      protocol: eigrp
+      distance: 170
+    desc: R3 maintains external EIGRP route for vendor network
+hints:
+  1: A configuration change on the ASBR boundary removed redistribution protection mechanisms.
+  2: Inspect route-maps and distance settings under OSPF on R2 and R3.
+  3: On R2 and R3 run show route-map and verify deny clauses matching tags 100 and 200.
+observed_symptom: ""

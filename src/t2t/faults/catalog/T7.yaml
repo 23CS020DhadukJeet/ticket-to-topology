@@ -1,0 +1,42 @@
+id: T7
+title: EIGRP passive-interface on R1 link
+level: 2
+symptom_class: redundancy
+objectives: [eigrp-adjacency, passive-interface, redundancy]
+inject:
+  R2:
+    - router eigrp 100
+    - passive-interface GigabitEthernet2
+revert:
+  R2:
+    - router eigrp 100
+    - no passive-interface GigabitEthernet2
+flows:
+  - src: 10.10.1.1
+    dst: 172.16.10.1
+    note: Branch to HQ traffic redundancy flow
+business_context: Branch router R1 lost its EIGRP neighbor adjacency with ASBR R2, collapsing redundancy to a single ASBR.
+root_cause: GigabitEthernet2 on R2 was configured as passive in EIGRP 100, suppressing Hello packets and tearing down the adjacency.
+key_concepts: [passive-interface, eigrp-hello, neighbor-adjacency]
+checks:
+  - id: c_t7_r2_neighbor
+    kind: neighbor_up
+    router: R2
+    params:
+      protocol: eigrp
+      address: 10.1.12.1
+    desc: EIGRP adjacency between R2 and R1 (10.1.12.1) is up
+  - id: c_t7_r1_10
+    kind: route_present
+    router: R1
+    prefix: 172.16.10.0/24
+    params:
+      protocol: eigrp
+      min_paths: 2
+      next_hops_include: [10.1.12.2, 10.1.13.2]
+    desc: R1 reaches HQ 172.16.10.0/24 via both ASBRs
+hints:
+  1: R1 reports that its EIGRP neighbor session with R2 is down.
+  2: Check interface and routing configuration under router eigrp 100 on R2.
+  3: On R2 run show ip protocols or show running-config | section router eigrp and check for passive-interface.
+observed_symptom: ""

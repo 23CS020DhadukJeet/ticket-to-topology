@@ -1,0 +1,109 @@
+checks:
+  # Adjacencies
+  - id: b_eigrp_r1_r2
+    kind: neighbor_up
+    router: R1
+    params:
+      protocol: eigrp
+      address: 10.1.12.2
+    desc: R1-R2 EIGRP neighbor adjacency established
+
+  - id: b_eigrp_r1_r3
+    kind: neighbor_up
+    router: R1
+    params:
+      protocol: eigrp
+      address: 10.1.13.2
+    desc: R1-R3 EIGRP neighbor adjacency established
+
+  - id: b_ospf_r4_r2
+    kind: neighbor_up
+    router: R4
+    params:
+      protocol: ospf
+      address: 10.1.24.1
+    desc: R4-R2 OSPF neighbor adjacency FULL
+
+  - id: b_ospf_r4_r3
+    kind: neighbor_up
+    router: R4
+    params:
+      protocol: ospf
+      address: 10.1.34.1
+    desc: R4-R3 OSPF neighbor adjacency FULL
+
+  # R1 Route Checks
+  - id: b_r1_hq_10
+    kind: route_present
+    router: R1
+    prefix: 172.16.10.0/24
+    params:
+      protocol: eigrp
+      distance: 170
+      tag: 200
+      min_paths: 2
+      next_hops_include: [10.1.12.2, 10.1.13.2]
+    desc: R1 reaches HQ 172.16.10.0/24 via both ASBRs over EIGRP with tag 200
+
+  - id: b_r1_hq_20
+    kind: route_present
+    router: R1
+    prefix: 172.16.20.16/28
+    params:
+      protocol: eigrp
+      distance: 170
+      tag: 200
+      min_paths: 2
+      next_hops_include: [10.1.12.2, 10.1.13.2]
+    desc: R1 reaches HQ 172.16.20.16/28 via both ASBRs over EIGRP with tag 200
+
+  # R2 Route Checks
+  - id: b_r2_branch_1
+    kind: route_present
+    router: R2
+    prefix: 10.10.1.0/24
+    params:
+      protocol: eigrp
+      distance: 90
+    desc: R2 reaches Branch 10.10.1.0/24 internal EIGRP via R1
+
+  - id: b_r2_vendor_99
+    kind: route_present
+    router: R2
+    prefix: 10.10.99.0/24
+    params:
+      protocol: eigrp
+      distance: 170
+    desc: R2 reaches Vendor 10.10.99.0/24 external EIGRP via R1
+
+  # R3 Route Checks
+  - id: b_r3_branch_1
+    kind: route_present
+    router: R3
+    prefix: 10.10.1.0/24
+    params:
+      protocol: eigrp
+      distance: 90
+    desc: R3 reaches Branch 10.10.1.0/24 internal EIGRP via R1
+
+  - id: b_r3_vendor_99
+    kind: route_present
+    router: R3
+    prefix: 10.10.99.0/24
+    params:
+      protocol: eigrp
+      distance: 170
+    desc: R3 reaches Vendor 10.10.99.0/24 external EIGRP via R1
+
+  # R4 Route Checks
+  - id: b_r4_branch_1
+    kind: route_present
+    router: R4
+    prefix: 10.10.1.0/24
+    params:
+      protocol: ospf
+      distance: 110
+      tag: 100
+      min_paths: 2
+      next_hops_include: [10.1.24.1, 10.1.34.1]
+    desc: R4 reaches Branch 10.10.1.0/24 via both ASBRs over OSPF E2 with tag 100

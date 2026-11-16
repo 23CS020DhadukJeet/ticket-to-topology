@@ -1,0 +1,36 @@
+id: T8
+title: Metric-type 1 on one ASBR only
+level: 3
+symptom_class: suboptimal
+objectives: [ospf-external-metrics, metric-type-1, metric-type-2, ecmp]
+inject:
+  R2:
+    - router ospf 1
+    - redistribute eigrp 100 subnets metric-type 1 route-map EIGRP-TO-OSPF
+revert:
+  R2:
+    - router ospf 1
+    - redistribute eigrp 100 subnets route-map EIGRP-TO-OSPF
+flows:
+  - src: 172.16.10.1
+    dst: 10.10.1.1
+    note: HQ to branch traffic flow
+business_context: Unequal path selection observed at HQ core R4; all branch traffic routes via R2 rather than using both ASBRs equally.
+root_cause: R2 redistributes EIGRP into OSPF with metric-type 1 (E1) while R3 redistributes as default metric-type 2 (E2); OSPF always prefers E1 over E2.
+key_concepts: [ospf-e1, ospf-e2, route-preference, redistribution-metrics]
+checks:
+  - id: c_t8_r4_route
+    kind: route_present
+    router: R4
+    prefix: 10.10.1.0/24
+    params:
+      protocol: ospf
+      route_type: E2
+      min_paths: 2
+      next_hops_include: [10.1.24.1, 10.1.34.1]
+    desc: R4 has dual equal-cost OSPF E2 paths for 10.10.1.0/24 via both ASBRs
+hints:
+  1: R4 is routing all branch traffic exclusively through R2 instead of splitting across R2 and R3.
+  2: Compare the OSPF external route types (E1 vs E2) between ASBRs.
+  3: On R4 run show ip route 10.10.1.0 255.255.255.0 and observe whether the route code is O E1 or O E2.
+observed_symptom: ""

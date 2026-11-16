@@ -373,11 +373,23 @@ def test_u3_4_stable_detects_flapping_and_constant_with_fake_clock() -> None:
 
 
 def test_u3_5_baseline_guard() -> None:
-    """U3.5: Baseline guard test (skipped until fault YAML catalog exists in Phase 4)."""
+    """U3.5: Baseline guard test verifying fault catalog and baseline checks."""
     from pathlib import Path
 
+    from t2t.config import load_inventory, load_settings
+    from t2t.faults.loader import load_baseline_checks, load_catalog
+
+    settings = load_settings()
+    inventory = load_inventory(settings.t2t_inventory)
+
     catalog_dir = Path("src/t2t/faults/catalog")
-    if not catalog_dir.exists() or not list(catalog_dir.glob("*.yaml")):
-        pytest.skip(
-            "Skipped in Phase 3: No fault catalog YAML files exist yet (enabled in Phase 4)."
-        )
+    baseline_path = Path("src/t2t/faults/baseline.yaml")
+
+    baseline_checks = load_baseline_checks(baseline_path)
+    assert len(baseline_checks) >= 5, "Expected baseline checks in baseline.yaml"
+
+    faults = load_catalog(catalog_dir, inventory)
+    assert len(faults) >= 10, f"Expected 10 faults in catalog, got {len(faults)}"
+
+    for fault_id, fault in faults.items():
+        assert len(fault.checks) >= 1, f"Fault {fault_id} must have >= 1 check"

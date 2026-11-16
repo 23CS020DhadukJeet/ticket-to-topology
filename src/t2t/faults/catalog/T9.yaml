@@ -1,0 +1,48 @@
+id: T9
+title: EIGRP MD5 mismatch on R3
+level: 3
+symptom_class: redundancy
+objectives: [eigrp-authentication, key-chain, adjacency]
+inject:
+  R3:
+    - key chain T2T-KEY
+    - key 1
+    - key-string t2tlab
+    - interface GigabitEthernet2
+    - ip authentication mode eigrp 100 md5
+    - ip authentication key-chain eigrp 100 T2T-KEY
+revert:
+  R3:
+    - interface GigabitEthernet2
+    - no ip authentication mode eigrp 100 md5
+    - no ip authentication key-chain eigrp 100 T2T-KEY
+    - no key chain T2T-KEY
+flows:
+  - src: 10.10.1.1
+    dst: 172.16.10.1
+    note: Branch to HQ traffic redundancy flow
+business_context: Adjacency loss detected on link between branch router R1 and ASBR R3, causing single-path vulnerability.
+root_cause: MD5 authentication was configured on R3 GigabitEthernet2 without matching configuration on peer R1, preventing EIGRP adjacency formation.
+key_concepts: [eigrp-authentication, md5, key-chain, adjacency-failure]
+checks:
+  - id: c_t9_r3_neighbor
+    kind: neighbor_up
+    router: R3
+    params:
+      protocol: eigrp
+      address: 10.1.13.1
+    desc: EIGRP adjacency between R3 and R1 (10.1.13.1) is up
+  - id: c_t9_r1_10
+    kind: route_present
+    router: R1
+    prefix: 172.16.10.0/24
+    params:
+      protocol: eigrp
+      min_paths: 2
+      next_hops_include: [10.1.12.2, 10.1.13.2]
+    desc: R1 reaches HQ 172.16.10.0/24 via both ASBRs
+hints:
+  1: EIGRP adjacency between R1 and R3 is down while R1 and R2 are healthy.
+  2: Check interface configuration on R3 connecting to R1.
+  3: On R3 run show running-config interface GigabitEthernet2 and check for ip authentication settings.
+observed_symptom: ""

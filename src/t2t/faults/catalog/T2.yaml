@@ -1,0 +1,45 @@
+id: T2
+title: EIGRP seed metric omitted on R2
+level: 2
+symptom_class: redundancy
+objectives: [redistribution, seed-metric, eigrp]
+inject:
+  R2:
+    - router eigrp 100
+    - no redistribute ospf 1 metric 10000 100 255 1 1500 route-map OSPF-TO-EIGRP
+    - redistribute ospf 1 route-map OSPF-TO-EIGRP
+revert:
+  R2:
+    - router eigrp 100
+    - redistribute ospf 1 metric 10000 100 255 1 1500 route-map OSPF-TO-EIGRP
+flows:
+  - src: 10.10.1.10
+    dst: 172.16.10.1
+    note: Branch to HQ redundant link traffic
+business_context: Failover testing shows branch traffic no longer utilizes redundant ASBR path via R2.
+root_cause: OSPF redistribution into EIGRP on R2 lacks an explicit seed metric, preventing routes from entering the EIGRP topology table.
+key_concepts: [seed-metric, eigrp-metric, redistribution]
+checks:
+  - id: c_t2_r1_10
+    kind: route_present
+    router: R1
+    prefix: 172.16.10.0/24
+    params:
+      protocol: eigrp
+      min_paths: 2
+      next_hops_include: [10.1.12.2, 10.1.13.2]
+    desc: R1 has dual ECMP paths to HQ 172.16.10.0/24 via both ASBRs
+  - id: c_t2_r1_20
+    kind: route_present
+    router: R1
+    prefix: 172.16.20.16/28
+    params:
+      protocol: eigrp
+      min_paths: 2
+      next_hops_include: [10.1.12.2, 10.1.13.2]
+    desc: R1 has dual ECMP paths to HQ 172.16.20.16/28 via both ASBRs
+hints:
+  1: Dual-homed branch router R1 is only receiving HQ routes through one ASBR.
+  2: Compare the redistribute ospf configuration between R2 and R3 under router eigrp 100.
+  3: On R2 run show running-config | section router eigrp and observe the metric parameters.
+observed_symptom: ""

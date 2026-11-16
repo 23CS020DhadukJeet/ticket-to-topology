@@ -64,3 +64,29 @@ def test_status_command(tmp_path: Path, monkeypatch: Any) -> None:
         assert "EIGRP (90)" in result.output
         assert "MISSING" in result.output
         assert result.exit_code == 0
+
+
+def test_reset_command_replay(monkeypatch: Any) -> None:
+    """Verify t2t reset --replay --force restores baseline."""
+    runner = CliRunner()
+    with monkeypatch.context() as m:
+        m.setattr("t2t.cli.app.load_baseline_checks", lambda path: [])
+        result = runner.invoke(app, ["reset", "--replay", "--force"])
+        assert "Lab Reset Results" in result.output
+        assert result.exit_code == 0
+
+
+def test_reveal_command_no_active_fault() -> None:
+    """Verify t2t reveal informs user when no fault is active."""
+    runner = CliRunner()
+    result = runner.invoke(app, ["reveal"])
+    assert "No fault is currently active" in result.output
+    assert result.exit_code == 0
+
+
+def test_qualify_command_requires_args() -> None:
+    """Verify t2t qualify requires either --fault or --all."""
+    runner = CliRunner()
+    result = runner.invoke(app, ["qualify"])
+    assert "Specify either --fault <ID> or --all" in result.output
+    assert result.exit_code == 1

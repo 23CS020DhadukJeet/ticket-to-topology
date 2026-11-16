@@ -1,0 +1,42 @@
+id: T10
+title: Wrong interface in connected-redistribution route-map on R1
+level: 3
+symptom_class: outage
+objectives: [connected-redistribution, route-map, loopback]
+inject:
+  R1:
+    - route-map VENDOR-CONN permit 10
+    - no match interface Loopback99
+    - match interface Loopback98
+revert:
+  R1:
+    - route-map VENDOR-CONN permit 10
+    - no match interface Loopback98
+    - match interface Loopback99
+flows:
+  - src: 172.16.10.10
+    dst: 10.10.99.1
+    note: HQ to vendor subnet critical connection
+business_context: Complete loss of connectivity to partner vendor subnet 10.10.99.0/24 across the entire enterprise network.
+root_cause: Route-map VENDOR-CONN on R1 was altered to match non-existent Loopback98 instead of Loopback99, causing connected redistribution into EIGRP to drop the vendor route.
+key_concepts: [connected-redistribution, match-interface, route-map]
+checks:
+  - id: c_t10_r2_route
+    kind: route_present
+    router: R2
+    prefix: 10.10.99.0/24
+    params:
+      protocol: eigrp
+    desc: R2 learns vendor prefix 10.10.99.0/24 via EIGRP
+  - id: c_t10_r4_route
+    kind: route_present
+    router: R4
+    prefix: 10.10.99.0/24
+    params:
+      protocol: ospf
+    desc: R4 learns vendor prefix 10.10.99.0/24 via OSPF
+hints:
+  1: The vendor network 10.10.99.0/24 is missing from both ASBR and HQ routing tables.
+  2: Inspect redistribution of connected interfaces under router eigrp 100 on R1.
+  3: On R1 run show route-map VENDOR-CONN and verify which interface is matched.
+observed_symptom: ""

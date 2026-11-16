@@ -3,7 +3,8 @@
 import re
 import socket
 from importlib.metadata import PackageNotFoundError, version
-from typing import Annotated
+from pathlib import Path
+from typing import Annotated, Any
 
 import typer
 from rich.console import Console
@@ -12,6 +13,10 @@ from rich.table import Table
 from t2t.config import load_inventory, load_settings
 from t2t.devices.session import DeviceSession
 from t2t.errors import T2TError
+from t2t.faults.engine import FaultEngine
+from t2t.faults.loader import load_baseline_checks, load_catalog, load_fault
+from t2t.faults.qualify import qualify_all, qualify_fault
+from t2t.faults.state import clear_active_fault, get_state
 from t2t.parsers.route import parse_route_detail
 
 app = typer.Typer(
@@ -265,6 +270,207 @@ def status(
             table.add_row(*row)
 
     console.print(table)
+
+
+@app.command()
+def reset(
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Clear stale active fault state and lock files."),
+    ] = False,
+    replay: Annotated[
+        bool,
+        typer.Option("--replay", help="Run reset offline using mock devices."),
+    ] = False,
+) -> None:
+    """Restore lab routers to baseline golden configuration."""
+    console = Console()
+    try:
+        settings = load_settings()
+        inventory = load_inventory(settings.t2t_inventory)
+    except Exception as err:
+        console.print(f"[bold red]Configuration error:[/bold red] {err}")
+        raise typer.Exit(code=1) from err
+
+    if force:
+        clear_active_fault(force=True)
+        console.print("[yellow]Cleared active fault state and lock files (--force).[/yellow]")
+
+    baseline_path = Path("src/t2t/faults/baseline.yaml")
+    baseline_checks = load_baseline_checks(baseline_path) if baseline_path.exists() else []
+
+    with DeviceSession(
+        inventory=inventory, settings=settings, read_only=False, replay=replay
+    ) as session:
+        engine = FaultEngine(
+            session=session,
+            inventory=inventory,
+            baseline_checks=baseline_checks,
+        )
+        console.print("[bold cyan]Resetting routers to golden configuration...[/bold cyan]")
+        statuses = engine.reset_lab(baseline_checks=baseline_checks)
+
+    table = Table(title="Lab Reset Results", show_lines=True)
+    table.add_column("Router", style="bold cyan")
+    table.add_column("Status", justify="center")
+    table.add_column("Duration", justify="right")
+
+    all_ok = True
+    for r_name, stat in statuses.items():
+        if not stat.success:
+            all_ok = False
+        stat_str = "[bold green]OK[/bold green]" if stat.success else "[bold red]FAIL[/bold red]"
+        table.add_row(r_name, stat_str, f"{stat.duration_s}s")
+
+    console.print(table)
+    if not all_ok:
+        console.print(
+            "[bold red]Reset failed on one or more routers.[/bold red] "
+            "Runbook: Verify golden_path and archive config, or reboot routers."
+        )
+        raise typer.Exit(code=1)
+    console.print("[bold green]Lab reset to baseline completed successfully.[/bold green]")
+
+
+@app.command()
+def reveal(
+    yes: Annotated[
+        bool,
+        typer.Option("-y", "--yes", help="Skip confirmation prompt."),
+    ] = False,
+) -> None:
+    """Reveal reference fix (revert commands) for the currently active fault."""
+    console = Console()
+    state = get_state()
+    if state.active_fault is None:
+        console.print("[yellow]No fault is currently active.[/yellow]")
+        raise typer.Exit(code=0)
+
+    if not yes:
+        confirm = typer.confirm(
+            f"Are you sure you want to reveal the reference fix for {state.active_fault}?",
+            default=False,
+        )
+        if not confirm:
+            console.print("[dim]Reveal cancelled.[/dim]")
+            raise typer.Exit(code=0)
+
+    try:
+        settings = load_settings()
+        inventory = load_inventory(settings.t2t_inventory)
+        fault_path = Path(f"src/t2t/faults/catalog/{state.active_fault}.yaml")
+        fault = load_fault(fault_path, inventory)
+    except Exception as err:
+        console.print(f"[bold red]Error loading active fault:[/bold red] {err}")
+        raise typer.Exit(code=1) from err
+
+    console.print(f"\n[bold cyan]Active Fault:[/bold cyan] {fault.id} — {fault.title}")
+    console.print(f"[bold cyan]Root Cause:[/bold cyan] {fault.root_cause}\n")
+    console.print("[bold green]Reference Fix Commands:[/bold green]")
+    for r_name, cmds in fault.revert.items():
+        console.print(f"  [bold]{r_name}:[/bold]")
+        for c in cmds:
+            console.print(f"    {c}")
+    console.print()
+
+
+@app.command()
+def qualify(
+    fault: Annotated[
+        str | None,
+        typer.Option("--fault", help="Fault ID to qualify (e.g. T3)."),
+    ] = None,
+    all_faults: Annotated[
+        bool,
+        typer.Option("--all", help="Qualify all faults in catalog."),
+    ] = False,
+    runs: Annotated[
+        int,
+        typer.Option("--runs", help="Number of qualification cycles per fault."),
+    ] = 3,
+    capture: Annotated[
+        bool,
+        typer.Option("--capture", help="Capture outputs to tests/fixtures/faulted/."),
+    ] = False,
+    replay: Annotated[
+        bool,
+        typer.Option("--replay", help="Run qualification offline using frozen test fixtures."),
+    ] = False,
+) -> None:
+    """Qualify faults against live lab or offline test fixtures."""
+    console = Console()
+    if not fault and not all_faults:
+        console.print("[bold red]Error:[/bold red] Specify either --fault <ID> or --all.")
+        raise typer.Exit(code=1)
+
+    try:
+        settings = load_settings()
+        inventory = load_inventory(settings.t2t_inventory)
+        catalog = load_catalog(Path("src/t2t/faults/catalog"), inventory)
+        baseline_checks = load_baseline_checks(Path("src/t2t/faults/baseline.yaml"))
+    except Exception as err:
+        console.print(f"[bold red]Configuration error:[/bold red] {err}")
+        raise typer.Exit(code=1) from err
+
+    targets: dict[str, Any] = {}
+    if all_faults:
+        targets = catalog
+    elif fault:
+        if fault not in catalog:
+            console.print(f"[bold red]Unknown fault ID:[/bold red] {fault}")
+            raise typer.Exit(code=1)
+        targets = {fault: catalog[fault]}
+
+    with DeviceSession(
+        inventory=inventory, settings=settings, read_only=False, replay=replay
+    ) as session:
+        engine = FaultEngine(
+            session=session,
+            inventory=inventory,
+            baseline_checks=baseline_checks,
+        )
+
+        reports = []
+        if all_faults:
+            reports = qualify_all(
+                catalog=targets,
+                engine=engine,
+                baseline_checks=baseline_checks,
+                runs=runs,
+                capture=capture,
+            )
+        elif fault is not None:
+            single_fault = targets[fault]
+            rep = qualify_fault(
+                fault=single_fault,
+                engine=engine,
+                baseline_checks=baseline_checks,
+                runs=runs,
+                capture=capture,
+            )
+            reports = [rep]
+
+    table = Table(title="Fault Qualification Summary", show_lines=True)
+    table.add_column("Fault", style="bold cyan")
+    table.add_column("Title")
+    table.add_column("Runs", justify="center")
+    table.add_column("Duration", justify="right")
+    table.add_column("Result", style="bold", justify="center")
+
+    all_passed = True
+    for rep in reports:
+        if not rep.qualified:
+            all_passed = False
+        res_str = (
+            "[bold green]QUALIFIED[/bold green]" if rep.qualified else "[bold red]FAILED[/bold red]"
+        )
+        table.add_row(
+            rep.fault_id, rep.title, str(len(rep.runs)), f"{rep.total_duration_s}s", res_str
+        )
+
+    console.print(table)
+    if not all_passed:
+        raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":

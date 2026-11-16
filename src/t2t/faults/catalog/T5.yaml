@@ -1,0 +1,35 @@
+id: T5
+title: Prefix-list mask too short on R3
+level: 3
+symptom_class: redundancy
+objectives: [prefix-list, route-filtering, ecmp]
+inject:
+  R3:
+    - no ip prefix-list HQ-NETS seq 20 permit 172.16.20.16/28
+    - ip prefix-list HQ-NETS seq 20 permit 172.16.20.0/24
+revert:
+  R3:
+    - no ip prefix-list HQ-NETS seq 20 permit 172.16.20.0/24
+    - ip prefix-list HQ-NETS seq 20 permit 172.16.20.16/28
+flows:
+  - src: 10.10.1.1
+    dst: 172.16.20.17
+    note: Branch to HQ server subnet traffic
+business_context: Failover testing shows loss of path redundancy to HQ server subnet 172.16.20.16/28 from branch R1.
+root_cause: Prefix-list HQ-NETS seq 20 was relaxed to 172.16.20.0/24, failing to match the /28 route and causing it to be dropped by redistribution.
+key_concepts: [prefix-list, prefix-length, route-filtering]
+checks:
+  - id: c_t5_r1_20
+    kind: route_present
+    router: R1
+    prefix: 172.16.20.16/28
+    params:
+      protocol: eigrp
+      min_paths: 2
+      next_hops_include: [10.1.12.2, 10.1.13.2]
+    desc: R1 reaches 172.16.20.16/28 via both ASBRs (10.1.12.2 and 10.1.13.2)
+hints:
+  1: R1 has dual paths for 172.16.10.0/24 but only a single path for 172.16.20.16/28.
+  2: Check route-map filtering and prefix-lists on ASBR R3.
+  3: On R3 run show ip prefix-list HQ-NETS and compare sequence 20 with the actual subnet mask.
+observed_symptom: ""

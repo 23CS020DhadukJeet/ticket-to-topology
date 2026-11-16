@@ -1,0 +1,35 @@
+id: T3
+title: OSPF external AD override removed on R3
+level: 2
+symptom_class: suboptimal
+objectives: [administrative-distance, route-selection, mutual-redistribution]
+inject:
+  R3:
+    - router ospf 1
+    - no distance ospf external 171
+revert:
+  R3:
+    - router ospf 1
+    - distance ospf external 171
+flows:
+  - src: 172.16.10.10
+    dst: 10.10.99.1
+    note: HQ to vendor subnet traffic
+business_context: Traffic from HQ to the vendor network takes a longer path than before.
+root_cause: R3 lost its OSPF external distance override, causing it to prefer the OSPF E2 copy (AD 110) over the EIGRP external route (AD 170).
+key_concepts: [administrative-distance, ospf-external, eigrp-external, mutual-redistribution]
+checks:
+  - id: c_t3_r3_route
+    kind: route_present
+    router: R3
+    prefix: 10.10.99.0/24
+    params:
+      protocol: eigrp
+      distance: 170
+      next_hops_include: [10.1.13.1]
+    desc: R3 reaches the vendor subnet directly via R1 over EIGRP with AD 170
+hints:
+  1: Look at how the two core routers pick between two sources for the vendor prefix.
+  2: Compare the route R3 uses for 10.10.99.0/24 with the one R2 uses.
+  3: On R3 run show ip route 10.10.99.0 255.255.255.0 and read Known via and distance.
+observed_symptom: ""

@@ -1,0 +1,45 @@
+id: T4
+title: Missing subnets keyword on R2
+level: 2
+symptom_class: redundancy
+objectives: [ospf-redistribution, subnets-keyword, ecmp]
+inject:
+  R2:
+    - router ospf 1
+    - no redistribute eigrp 100 subnets route-map EIGRP-TO-OSPF
+    - redistribute eigrp 100 route-map EIGRP-TO-OSPF
+revert:
+  R2:
+    - router ospf 1
+    - redistribute eigrp 100 subnets route-map EIGRP-TO-OSPF
+flows:
+  - src: 172.16.10.1
+    dst: 10.10.1.10
+    note: HQ to branch subnet redundancy flow
+business_context: HQ core router R4 lost ECMP redundancy towards branch subnets, routing exclusively through R3.
+root_cause: Redistributing EIGRP into OSPF without the 'subnets' keyword causes classless /24 subnets to be ignored.
+key_concepts: [ospf-subnets, redistribution, classless-routing]
+checks:
+  - id: c_t4_r4_1
+    kind: route_present
+    router: R4
+    prefix: 10.10.1.0/24
+    params:
+      protocol: ospf
+      min_paths: 2
+      next_hops_include: [10.1.24.1, 10.1.34.1]
+    desc: R4 has dual ECMP paths to 10.10.1.0/24 via both ASBRs
+  - id: c_t4_r4_2
+    kind: route_present
+    router: R4
+    prefix: 10.10.2.0/24
+    params:
+      protocol: ospf
+      min_paths: 2
+      next_hops_include: [10.1.24.1, 10.1.34.1]
+    desc: R4 has dual ECMP paths to 10.10.2.0/24 via both ASBRs
+hints:
+  1: R4 is receiving branch routes from only one ASBR instead of both.
+  2: Inspect the redistribute eigrp statement under router ospf 1 on R2.
+  3: On R2 run show running-config | section router ospf and check for the subnets keyword.
+observed_symptom: ""
