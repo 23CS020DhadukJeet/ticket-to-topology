@@ -1,13 +1,14 @@
-"""Unit tests for the doctor CLI command."""
+"""Unit tests for doctor and status CLI commands."""
 
 from pathlib import Path
+from typing import Any
 
 from typer.testing import CliRunner
 
 from t2t.cli.app import app
 
 
-def test_doctor_replay_mode(tmp_path: Path, monkeypatch) -> None:
+def test_doctor_replay_mode(tmp_path: Path, monkeypatch: Any) -> None:
     """Verify t2t doctor --replay runs against fixtures."""
     fixtures_dir = tmp_path / "fixtures"
     for r in ["R1", "R2", "R3", "R4"]:
@@ -25,7 +26,6 @@ def test_doctor_replay_mode(tmp_path: Path, monkeypatch) -> None:
         (r_dir / "show_vrf.txt").write_text("MGMT  1:1  ipv4,ipv6\n", encoding="utf-8")
 
     runner = CliRunner()
-    # Mock DeviceSession fixtures_root
     with monkeypatch.context() as m:
         m.setattr(
             "t2t.cli.app.DeviceSession",
@@ -36,4 +36,31 @@ def test_doctor_replay_mode(tmp_path: Path, monkeypatch) -> None:
         result = runner.invoke(app, ["doctor", "--replay"])
         assert "Lab Environment Doctor Check" in result.output
         assert "PASS" in result.output
+        assert result.exit_code == 0
+
+
+def test_status_command(tmp_path: Path, monkeypatch: Any) -> None:
+    """Verify t2t status --replay renders rich table with routes and MISSING."""
+    fixtures_dir = tmp_path / "fixtures"
+    # Create fixture for R1 10.10.1.0/24
+    r1_dir = fixtures_dir / "baseline" / "R1"
+    r1_dir.mkdir(parents=True)
+    (r1_dir / "show_ip_route_10_10_1_0_255_255_255_0.txt").write_text(
+        'Routing entry for 10.10.1.0/24\n  Known via "eigrp 100", distance 90, metric 1308160\n'
+        "  * 10.1.12.1, via GigabitEthernet2\n",
+        encoding="utf-8",
+    )
+
+    runner = CliRunner()
+    with monkeypatch.context() as m:
+        m.setattr(
+            "t2t.cli.app.DeviceSession",
+            lambda **kwargs: __import__(
+                "t2t.devices.session", fromlist=["DeviceSession"]
+            ).DeviceSession(fixtures_root=fixtures_dir, **kwargs),
+        )
+        result = runner.invoke(app, ["status", "--replay"])
+        assert "Redistribution Status: Key Prefixes" in result.output
+        assert "EIGRP (90)" in result.output
+        assert "MISSING" in result.output
         assert result.exit_code == 0

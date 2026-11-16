@@ -12,6 +12,7 @@ from rich.table import Table
 from t2t.config import load_inventory, load_settings
 from t2t.devices.session import DeviceSession
 from t2t.errors import T2TError
+from t2t.parsers.route import parse_route_detail
 
 app = typer.Typer(
     name="t2t",
@@ -21,6 +22,14 @@ app = typer.Typer(
     ),
     no_args_is_help=True,
 )
+
+KEY_PREFIXES = [
+    ("10.10.1.0/24", "10.10.1.0 255.255.255.0"),
+    ("10.10.2.0/24", "10.10.2.0 255.255.255.0"),
+    ("10.10.99.0/24", "10.10.99.0 255.255.255.0"),
+    ("172.16.10.0/24", "172.16.10.0 255.255.255.0"),
+    ("172.16.20.16/28", "172.16.20.16 255.255.255.240"),
+]
 
 
 def _get_version() -> str:
@@ -66,7 +75,9 @@ def check_tcp_port(host: str, port: int = 22, timeout: float = 3.0) -> bool:
 def _parse_ios_version(show_version_output: str) -> str:
     """Extract IOS-XE version string from show version output."""
     match = re.search(
-        r"Cisco IOS XE Software,\s+Version\s+([^\s,\r\n]+)", show_version_output, re.IGNORECASE
+        r"Cisco IOS XE Software,\s+Version\s+([^\s,\r\n]+)",
+        show_version_output,
+        re.IGNORECASE,
     )
     if match:
         return match.group(1)
@@ -207,6 +218,53 @@ def doctor(
     console.print(table)
     if not all_passed:
         raise typer.Exit(code=1)
+
+
+@app.command()
+def status(
+    replay: Annotated[
+        bool,
+        typer.Option(
+            "--replay",
+            help="Query routing status offline using frozen test fixtures.",
+        ),
+    ] = False,
+) -> None:
+    """Display routing table status for key prefixes across all routers."""
+    console = Console()
+    try:
+        settings = load_settings()
+        inventory = load_inventory(settings.t2t_inventory)
+    except Exception as err:
+        console.print(f"[bold red]Configuration error:[/bold red] {err}")
+        raise typer.Exit(code=1) from err
+
+    table = Table(title="Redistribution Status: Key Prefixes", show_lines=True)
+    table.add_column("Prefix", style="bold cyan")
+    for r in inventory.routers:
+        table.add_column(r.name, justify="center")
+
+    with DeviceSession(
+        inventory=inventory, settings=settings, read_only=True, replay=replay
+    ) as session:
+        for prefix_label, prefix_cmd in KEY_PREFIXES:
+            row: list[str] = [prefix_label]
+            for r in inventory.routers:
+                try:
+                    out = session.show(r.name, f"show ip route {prefix_cmd}")
+                    route = parse_route_detail(out)
+                    if route is None:
+                        row.append("[bold red]MISSING[/bold red]")
+                    else:
+                        tag_str = f" tag {route.tag}" if route.tag is not None else ""
+                        hops_str = f" via {route.next_hops[0].ip}" if route.next_hops else ""
+                        proto_str = f"[green]{route.protocol.upper()}[/green]"
+                        row.append(f"{proto_str} ({route.distance}){tag_str}{hops_str}")
+                except T2TError:
+                    row.append("[bold red]MISSING[/bold red]")
+            table.add_row(*row)
+
+    console.print(table)
 
 
 if __name__ == "__main__":

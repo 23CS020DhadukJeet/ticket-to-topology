@@ -1,0 +1,17 @@
+Routing entry for 172.16.10.0/24
+  Known via "eigrp 100", distance 170, metric 25628160, type external
+  Redistributing via eigrp 100
+  Advertised by eigrp 100 route-map RM_OSPF_TO_EIGRP
+  Route tag 200
+  Last update from 10.1.12.2 on GigabitEthernet2, 00:05:21 ago
+  Routing Descriptor Blocks:
+  * 10.1.12.2, from 10.1.12.2, 00:05:21 ago, via GigabitEthernet2
+      Route metric is 25628160, traffic share count is 1
+      Total delay is 50 microseconds, minimum bandwidth is 100000 Kbit
+      Reliability 255/255, minimum MTU 1500 bytes
+      Loading 1/255, Hops 1
+    10.1.13.2, from 10.1.13.2, 00:05:21 ago, via GigabitEthernet3
+      Route metric is 25628160, traffic share count is 1
+      Total delay is 50 microseconds, minimum bandwidth is 100000 Kbit
+      Reliability 255/255, minimum MTU 1500 bytes
+      Loading 1/255, Hops 1

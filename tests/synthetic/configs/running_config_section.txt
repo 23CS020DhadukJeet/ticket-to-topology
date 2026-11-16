@@ -1,0 +1,7 @@
+router eigrp 100
+ network 10.10.1.0 0.0.0.255
+ redistribute ospf 1 metric 100000 100 255 1 1500 route-map RM_OSPF_TO_EIGRP
+!
+router ospf 1
+ network 10.1.24.0 0.0.0.3 area 0
+ redistribute eigrp 100 subnets route-map RM_EIGRP_TO_OSPF

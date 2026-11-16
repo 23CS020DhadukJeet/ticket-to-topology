@@ -1,0 +1,9 @@
+route-map RM_EIGRP_TO_OSPF, deny, sequence 10
+  Match clauses:
+    tag 200
+  Set clauses:
+route-map RM_EIGRP_TO_OSPF, permit, sequence 20
+  Match clauses:
+  Set clauses:
+    metric 20
+    tag 100
