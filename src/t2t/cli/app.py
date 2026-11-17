@@ -1,5 +1,6 @@
 """CLI entrypoint for Ticket-to-Topology (t2t)."""
 
+import os
 import re
 import socket
 from importlib.metadata import PackageNotFoundError, version
@@ -10,6 +11,14 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from t2t.cli.ui import (
+    get_console,
+    render_check_results,
+    render_closing_card,
+    render_hint_card,
+    render_history_table,
+    render_ticket_card,
+)
 from t2t.config import load_inventory, load_settings
 from t2t.devices.session import DeviceSession
 from t2t.errors import T2TError
@@ -18,6 +27,9 @@ from t2t.faults.loader import load_baseline_checks, load_catalog, load_fault
 from t2t.faults.qualify import qualify_all, qualify_fault
 from t2t.faults.state import clear_active_fault, get_state
 from t2t.parsers.route import parse_route_detail
+from t2t.session.drift import DriftReport
+from t2t.session.service import SessionService
+from t2t.session.store import SQLiteStore
 
 app = typer.Typer(
     name="t2t",
@@ -54,6 +66,14 @@ def version_callback(value: bool) -> None:
 
 @app.callback()
 def main(
+    ctx: typer.Context,
+    replay: Annotated[
+        bool,
+        typer.Option(
+            "--replay",
+            help="Run in offline replay mode using recorded fixtures.",
+        ),
+    ] = False,
     version: Annotated[
         bool | None,
         typer.Option(
@@ -66,6 +86,352 @@ def main(
     ] = None,
 ) -> None:
     """Ticket-to-Topology CLI root."""
+    ctx.ensure_object(dict)
+    ctx.obj["replay"] = replay
+
+
+def _get_service(
+    ctx: typer.Context | None = None,
+    replay: bool = False,
+) -> SessionService:
+    """Helper to instantiate SessionService configured with settings and replay mode."""
+    settings = load_settings()
+    inventory = load_inventory(settings.t2t_inventory)
+
+    global_replay = False
+    if ctx and hasattr(ctx, "obj") and isinstance(ctx.obj, dict):
+        global_replay = bool(ctx.obj.get("replay", False))
+    effective_replay = replay or global_replay
+
+    state_path_str = os.environ.get("T2T_STATE_FILE")
+    state_file = Path(state_path_str) if state_path_str else Path(".t2t/state.json")
+
+    db_path_str = os.environ.get("T2T_DB_PATH")
+    db_file = Path(db_path_str) if db_path_str else Path(".t2t/t2t.db")
+    store = SQLiteStore(db_file)
+
+    return SessionService(
+        settings=settings,
+        inventory=inventory,
+        replay=effective_replay,
+        store=store,
+        state_file=state_file,
+    )
+
+
+@app.command("new-ticket")
+def new_ticket(
+    ctx: typer.Context,
+    fault: Annotated[
+        str | None,
+        typer.Option("--fault", help="Fault ID to inject (e.g. T3)."),
+    ] = None,
+    level: Annotated[
+        int | None,
+        typer.Option("--level", help="Target fault difficulty level (1..5)."),
+    ] = None,
+    random_fault: Annotated[
+        bool,
+        typer.Option("--random", help="Select a random fault."),
+    ] = False,
+    no_ai: Annotated[
+        bool,
+        typer.Option("--no-ai", help="Run session with deterministic offline fallbacks."),
+    ] = False,
+    replay: Annotated[
+        bool,
+        typer.Option("--replay", help="Run offline using mock fixtures."),
+    ] = False,
+) -> None:
+    """Start a new candidate troubleshooting session and generate an incident ticket."""
+    console = get_console()
+    try:
+        service = _get_service(ctx, replay)
+        with console.status("[bold cyan]Injecting fault and preparing ticket...[/bold cyan]"):
+            active_state, ticket_text = service.start_ticket(
+                fault_id=fault,
+                level=level,
+                random_fault=random_fault,
+                no_ai=no_ai,
+            )
+
+        fault_model = service._load_fault(active_state.fault_id)
+        card = render_ticket_card(
+            ticket_text=ticket_text,
+            fault_id=active_state.fault_id,
+            level=active_state.level,
+            symptom_class=fault_model.symptom_class,
+            flows=fault_model.flows,
+        )
+        console.print(card)
+        console.print(
+            "\n[dim]Investigate the topology using 't2t status' or router show commands. "
+            "Need help? Run 't2t hint'. Ready to submit? Run 't2t submit'.[/dim]"
+        )
+    except T2TError as err:
+        console.print(f"[bold red]Error:[/bold red] {err}")
+        raise typer.Exit(code=err.exit_code) from err
+    except Exception as err:
+        console.print(f"[bold red]Unexpected error:[/bold red] {err}")
+        raise typer.Exit(code=1) from err
+
+
+@app.command("hint")
+def hint(
+    ctx: typer.Context,
+    replay: Annotated[
+        bool,
+        typer.Option("--replay", help="Run offline using mock fixtures."),
+    ] = False,
+) -> None:
+    """Request the next pedagogical mentor hint (costs points)."""
+    console = get_console()
+    try:
+        service = _get_service(ctx, replay)
+        with console.status("[bold yellow]Generating mentor hint...[/bold yellow]"):
+            lvl, hint_text, penalty, is_max = service.get_hint()
+
+        card = render_hint_card(
+            hint_text=hint_text,
+            level=lvl,
+            penalty=penalty,
+            is_max=is_max,
+        )
+        console.print(card)
+    except T2TError as err:
+        console.print(f"[bold red]Error:[/bold red] {err}")
+        raise typer.Exit(code=err.exit_code) from err
+    except Exception as err:
+        console.print(f"[bold red]Unexpected error:[/bold red] {err}")
+        raise typer.Exit(code=1) from err
+
+
+@app.command("submit")
+def submit(
+    ctx: typer.Context,
+    explanation: Annotated[
+        str | None,
+        typer.Option("--explanation", "-e", help="1-2 sentence explanation of root cause and fix."),
+    ] = None,
+    replay: Annotated[
+        bool,
+        typer.Option("--replay", help="Run offline using mock fixtures."),
+    ] = False,
+) -> None:
+    """Submit your fix for technical verification, drift evaluation, and AI grading."""
+    console = get_console()
+    try:
+        service = _get_service(ctx, replay)
+        state = service.get_active_state()
+        if state is None:
+            console.print(
+                "[bold red]Error:[/bold red] No active ticket session. "
+                "Run 't2t new-ticket' to start one."
+            )
+            raise typer.Exit(code=1)
+
+        user_exp: str = (
+            explanation
+            if explanation and explanation.strip()
+            else str(typer.prompt("Enter your 1-2 sentence explanation of the root cause and fix"))
+        )
+
+        with console.status(
+            "[bold cyan]Running verification checks and evaluating drift...[/bold cyan]"
+        ):
+            passed, check_results, drift_report, score, feedback = service.submit_explanation(
+                user_exp
+            )
+
+        table = render_check_results(check_results)
+        console.print(table)
+        console.print()
+
+        if not passed:
+            console.print(
+                "[bold red]Verification checks failed.[/bold red] "
+                "Your score was not recorded. Inspect the failed checks above and try again."
+            )
+            raise typer.Exit(code=1)
+
+        if score and drift_report:
+            card = render_closing_card(
+                score=score,
+                drift=drift_report,
+                feedback=feedback,
+            )
+            console.print(card)
+            console.print(
+                "\n[bold green]Congratulations! Your session has been recorded "
+                "in the database.[/bold green]"
+            )
+    except typer.Exit:
+        raise
+    except T2TError as err:
+        console.print(f"[bold red]Error:[/bold red] {err}")
+        raise typer.Exit(code=err.exit_code) from err
+    except Exception as err:
+        console.print(f"[bold red]Unexpected error:[/bold red] {err}")
+        raise typer.Exit(code=1) from err
+
+
+@app.command("abandon")
+def abandon(
+    ctx: typer.Context,
+    yes: Annotated[
+        bool,
+        typer.Option("-y", "--yes", help="Skip confirmation prompt."),
+    ] = False,
+    replay: Annotated[
+        bool,
+        typer.Option("--replay", help="Run offline using mock fixtures."),
+    ] = False,
+) -> None:
+    """Abandon current active troubleshooting session and restore baseline."""
+    console = get_console()
+    try:
+        service = _get_service(ctx, replay)
+        state = service.get_active_state()
+        if state is None:
+            console.print("[yellow]No ticket session is currently active.[/yellow]")
+            raise typer.Exit(code=0)
+
+        if not yes:
+            confirm = typer.confirm(
+                f"Are you sure you want to abandon session for fault {state.fault_id}? "
+                "Your score will be forfeited.",
+                default=False,
+            )
+            if not confirm:
+                console.print("[dim]Abandon cancelled.[/dim]")
+                raise typer.Exit(code=0)
+
+        with console.status(
+            "[bold yellow]Abandoning session and reverting network...[/bold yellow]"
+        ):
+            service.abandon_session()
+
+        console.print(
+            "[yellow]Session abandoned. Router configurations reverted to baseline.[/yellow]"
+        )
+    except typer.Exit:
+        raise
+    except T2TError as err:
+        console.print(f"[bold red]Error:[/bold red] {err}")
+        raise typer.Exit(code=err.exit_code) from err
+
+
+@app.command("history")
+def history(
+    stats: Annotated[
+        bool,
+        typer.Option("--stats", help="Display aggregate performance statistics."),
+    ] = False,
+) -> None:
+    """View past troubleshooting sessions and performance statistics."""
+    console = get_console()
+    db_path_str = os.environ.get("T2T_DB_PATH")
+    db_file = Path(db_path_str) if db_path_str else Path(".t2t/t2t.db")
+    store = SQLiteStore(db_file)
+
+    records = store.get_history()
+    stats_dict = store.get_history_stats() if stats else None
+    table = render_history_table(records, stats_dict)
+    console.print(table)
+
+
+@app.command("shell")
+def shell(
+    ctx: typer.Context,
+    replay: Annotated[
+        bool,
+        typer.Option("--replay", help="Run shell in offline replay mode."),
+    ] = False,
+) -> None:
+    """Interactive REPL shell with prompt 'sim>'."""
+    import cmd
+
+    console = get_console()
+    console.print("[bold cyan]Starting Ticket-to-Topology Interactive Shell (REPL)...[/bold cyan]")
+    console.print("[dim]Type 'help' for available commands or 'exit' to quit.[/dim]\n")
+
+    class T2TShell(cmd.Cmd):
+        prompt = "sim> "
+
+        def do_status(self, arg: str) -> None:
+            """Show routing table status across key prefixes."""
+            try:
+                status(ctx=ctx, replay=replay)
+            except Exception as e:
+                console.print(f"[red]Error:[/red] {e}")
+
+        def do_hint(self, arg: str) -> None:
+            """Request next mentor hint."""
+            try:
+                hint(ctx=ctx, replay=replay)
+            except typer.Exit:
+                pass
+            except Exception as e:
+                console.print(f"[red]Error:[/red] {e}")
+
+        def do_submit(self, arg: str) -> None:
+            """Submit explanation and verify fix: submit <explanation>"""
+            try:
+                exp = arg.strip() if arg.strip() else None
+                submit(ctx=ctx, explanation=exp, replay=replay)
+            except typer.Exit:
+                pass
+            except Exception as e:
+                console.print(f"[red]Error:[/red] {e}")
+
+        def do_reveal(self, arg: str) -> None:
+            """Reveal reference fix."""
+            try:
+                reveal(ctx=ctx, yes=False, replay=replay)
+            except typer.Exit:
+                pass
+            except Exception as e:
+                console.print(f"[red]Error:[/red] {e}")
+
+        def do_abandon(self, arg: str) -> None:
+            """Abandon active session."""
+            try:
+                abandon(ctx=ctx, yes=False, replay=replay)
+            except typer.Exit:
+                pass
+            except Exception as e:
+                console.print(f"[red]Error:[/red] {e}")
+
+        def do_history(self, arg: str) -> None:
+            """View session history: history [--stats]"""
+            try:
+                show_stats = "--stats" in arg
+                history(stats=show_stats)
+            except Exception as e:
+                console.print(f"[red]Error:[/red] {e}")
+
+        def do_reset(self, arg: str) -> None:
+            """Reset lab routers to golden configuration."""
+            try:
+                reset(force=False, replay=replay)
+            except typer.Exit:
+                pass
+            except Exception as e:
+                console.print(f"[red]Error:[/red] {e}")
+
+        def do_exit(self, arg: str) -> bool:
+            """Exit interactive shell."""
+            console.print("[dim]Exiting sim shell.[/dim]")
+            return True
+
+        def do_quit(self, arg: str) -> bool:
+            """Exit interactive shell."""
+            return self.do_exit(arg)
+
+        def emptyline(self) -> bool:
+            return False
+
+    T2TShell().cmdloop()
 
 
 def check_tcp_port(host: str, port: int = 22, timeout: float = 3.0) -> bool:
@@ -227,6 +593,7 @@ def doctor(
 
 @app.command()
 def status(
+    ctx: typer.Context | None = None,
     replay: Annotated[
         bool,
         typer.Option(
@@ -236,7 +603,12 @@ def status(
     ] = False,
 ) -> None:
     """Display routing table status for key prefixes across all routers."""
-    console = Console()
+    console = get_console()
+    global_replay = False
+    if ctx and hasattr(ctx, "obj") and isinstance(ctx.obj, dict):
+        global_replay = bool(ctx.obj.get("replay", False))
+    effective_replay = replay or global_replay
+
     try:
         settings = load_settings()
         inventory = load_inventory(settings.t2t_inventory)
@@ -250,7 +622,7 @@ def status(
         table.add_column(r.name, justify="center")
 
     with DeviceSession(
-        inventory=inventory, settings=settings, read_only=True, replay=replay
+        inventory=inventory, settings=settings, read_only=True, replay=effective_replay
     ) as session:
         for prefix_label, prefix_cmd in KEY_PREFIXES:
             row: list[str] = [prefix_label]
@@ -274,6 +646,7 @@ def status(
 
 @app.command()
 def reset(
+    ctx: typer.Context | None = None,
     force: Annotated[
         bool,
         typer.Option("--force", help="Clear stale active fault state and lock files."),
@@ -284,7 +657,11 @@ def reset(
     ] = False,
 ) -> None:
     """Restore lab routers to baseline golden configuration."""
-    console = Console()
+    console = get_console()
+    global_replay = False
+    if ctx and hasattr(ctx, "obj") and isinstance(ctx.obj, dict):
+        global_replay = bool(ctx.obj.get("replay", False))
+    effective_replay = replay or global_replay
     try:
         settings = load_settings()
         inventory = load_inventory(settings.t2t_inventory)
@@ -302,7 +679,7 @@ def reset(
     statuses: dict[str, Any] = {}
     try:
         with DeviceSession(
-            inventory=inventory, settings=settings, read_only=False, replay=replay
+            inventory=inventory, settings=settings, read_only=False, replay=effective_replay
         ) as session:
             engine = FaultEngine(
                 session=session,
@@ -339,13 +716,49 @@ def reset(
 
 @app.command()
 def reveal(
+    ctx: typer.Context | None = None,
     yes: Annotated[
         bool,
         typer.Option("-y", "--yes", help="Skip confirmation prompt."),
     ] = False,
+    replay: Annotated[
+        bool,
+        typer.Option("--replay", help="Run offline using mock devices."),
+    ] = False,
 ) -> None:
     """Reveal reference fix (revert commands) for the currently active fault."""
-    console = Console()
+    console = get_console()
+    service = _get_service(ctx, replay)
+    active_session = service.get_active_state()
+
+    if active_session is not None:
+        if not yes:
+            confirm = typer.confirm(
+                f"Are you sure you want to reveal the reference fix for {active_session.fault_id}? "
+                "This will forfeit your session score (final score = 0).",
+                default=False,
+            )
+            if not confirm:
+                console.print("[dim]Reveal cancelled.[/dim]")
+                raise typer.Exit(code=0)
+
+        with console.status("[bold yellow]Revealing fault and reverting network...[/bold yellow]"):
+            root_cause, revert_cmds, score = service.reveal_fault()
+
+        closing_card = render_closing_card(
+            score=score,
+            drift=DriftReport(clean_fix=False, diffs={}, summary="Fix revealed; score forfeited."),
+            root_cause=root_cause,
+        )
+        console.print(closing_card)
+        console.print("\n[bold green]Reference Fix Commands (Applied):[/bold green]")
+        for r_name, cmds in revert_cmds.items():
+            console.print(f"  [bold]{r_name}:[/bold]")
+            for c in cmds:
+                console.print(f"    {c}")
+        console.print()
+        return
+
     state = get_state()
     if state.active_fault is None:
         console.print("[yellow]No fault is currently active.[/yellow]")
@@ -401,9 +814,15 @@ def qualify(
         bool,
         typer.Option("--replay", help="Run qualification offline using frozen test fixtures."),
     ] = False,
+    ctx: typer.Context | None = None,
 ) -> None:
     """Qualify faults against live lab or offline test fixtures."""
     console = Console()
+    global_replay = False
+    if ctx and hasattr(ctx, "obj") and isinstance(ctx.obj, dict):
+        global_replay = bool(ctx.obj.get("replay", False))
+    effective_replay = replay or global_replay
+
     if not fault and not all_faults:
         console.print("[bold red]Error:[/bold red] Specify either --fault <ID> or --all.")
         raise typer.Exit(code=1)
@@ -429,7 +848,7 @@ def qualify(
     reports: list[Any] = []
     try:
         with DeviceSession(
-            inventory=inventory, settings=settings, read_only=False, replay=replay
+            inventory=inventory, settings=settings, read_only=False, replay=effective_replay
         ) as session:
             engine = FaultEngine(
                 session=session,
