@@ -504,10 +504,10 @@ def test_u5_7_prompt_injection_explanation_treated_as_data() -> None:
     assert grade.total == 0
 
 
-# U5.8: Architecture test (O3) - verify, faults, and scoring never import ai
+# U5.8: Architecture test (O3) - verify, faults, scoring, and audit never import ai
 def test_u5_8_architecture_test_verify_faults_never_import_ai() -> None:
     src_root = Path("src/t2t")
-    forbidden_dirs = [src_root / "verify", src_root / "faults"]
+    forbidden_dirs = [src_root / "verify", src_root / "faults", src_root / "audit"]
     scoring_file = src_root / "session" / "scoring.py"
     target_files = [scoring_file] if scoring_file.exists() else []
 

@@ -11,6 +11,8 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from t2t.audit.report import render_json, render_markdown, render_table
+from t2t.audit.service import AuditService
 from t2t.cli.ui import (
     get_console,
     render_check_results,
@@ -898,6 +900,113 @@ def qualify(
 
     console.print(table)
     if not all_passed:
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def audit(
+    ctx: typer.Context,
+    from_dir: Annotated[
+        Path | None,
+        typer.Option("--from-dir", help="Directory of saved router configs for offline audit."),
+    ] = None,
+    format: Annotated[
+        str,
+        typer.Option("--format", help="Output format: table, json, md."),
+    ] = "table",
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", help="Write report to specified file or directory."),
+    ] = None,
+    fail_on: Annotated[
+        str,
+        typer.Option("--fail-on", help="Severity threshold to fail (exit 1): high, medium."),
+    ] = "medium",
+    strict_host_keys: Annotated[
+        bool,
+        typer.Option("--strict-host-keys", help="Enforce strict SSH host key checking."),
+    ] = False,
+    replay: Annotated[
+        bool,
+        typer.Option("--replay", help="Run offline using mock fixtures."),
+    ] = False,
+) -> None:
+    """Run read-only audit to identify redistribution risks across devices."""
+    console = get_console()
+    global_replay = False
+    if ctx and hasattr(ctx, "obj") and isinstance(ctx.obj, dict):
+        global_replay = bool(ctx.obj.get("replay", False))
+    effective_replay = replay or global_replay
+
+    try:
+        settings = load_settings()
+        inventory = None
+        if not from_dir:
+            inventory = load_inventory(settings.t2t_inventory)
+
+        service = AuditService(
+            inventory=inventory,
+            settings=settings,
+            replay=effective_replay,
+            strict_host_keys=strict_host_keys,
+        )
+
+        with console.status(
+            "[bold cyan]Collecting configurations and auditing rules...[/bold cyan]"
+        ):
+            report = service.execute_audit(from_dir=from_dir, fail_on=fail_on)
+
+    except (FileNotFoundError, ValueError) as err:
+        console.print(f"[bold red]Audit error:[/bold red] {err}")
+        raise typer.Exit(code=2) from err
+    except T2TError as err:
+        console.print(f"[bold red]Audit error:[/bold red] {err}")
+        raise typer.Exit(code=2) from err
+    except Exception as err:
+        console.print(f"[bold red]Unexpected error during audit:[/bold red] {err}")
+        raise typer.Exit(code=2) from err
+
+    # Format output
+    out_format = format.lower()
+    rendered_text = ""
+    if out_format == "json":
+        rendered_text = render_json(report)
+        if not output:
+            console.print(rendered_text)
+    elif out_format in ("md", "markdown"):
+        rendered_text = render_markdown(report)
+        if not output:
+            console.print(rendered_text)
+    else:
+        table = render_table(report)
+        console.print(table)
+
+    # Save to file if --output specified
+    if output:
+        try:
+            target_path = output
+            if target_path.is_dir() or str(target_path).endswith(("/", "\\")):
+                ext = (
+                    "json"
+                    if out_format == "json"
+                    else ("md" if out_format in ("md", "markdown") else "txt")
+                )
+                target_path = target_path / f"audit_report.{ext}"
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+
+            if out_format in ("json", "md", "markdown"):
+                target_path.write_text(rendered_text, encoding="utf-8")
+            else:
+                file_console = Console(record=True, width=120)
+                file_console.print(render_table(report))
+                target_path.write_text(file_console.export_text(), encoding="utf-8")
+            console.print(f"[dim]Report written to {target_path}[/dim]")
+        except Exception as err:
+            console.print(f"[bold red]Failed to write report output:[/bold red] {err}")
+            raise typer.Exit(code=2) from err
+
+    # Exit code: 0 if passed (no findings at or above fail_on threshold), 1 if failed
+    if not report.passed:
         raise typer.Exit(code=1)
 
 
