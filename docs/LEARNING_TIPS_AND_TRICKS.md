@@ -140,13 +140,34 @@ t2t submit --replay -e "Configured distance ospf external 171 on R3 to ensure EI
   FINAL SCORE: 98.5 / 100 (Ticket RESOLVED)
   ```
 
-### Step 6: View the Result in the Browser
+### Step 6: View the Result in the Browser & Web Dashboard Demo
 ```bash
-t2t web --port 8000
+# Launch dashboard in offline replay mode
+t2t web --replay --port 8000
 ```
 * Open `http://127.0.0.1:8000` in Chrome/Edge/Firefox.
 * The link between R3 and R1 is now bright green!
 * The ticket history displays your 98.5 score and resolved timestamp.
+* Open `http://127.0.0.1:8000/docs` to inspect interactive Swagger API documentation.
+* Query REST endpoints via terminal:
+  ```powershell
+  curl http://127.0.0.1:8000/api/status
+  curl http://127.0.0.1:8000/api/session
+  curl http://127.0.0.1:8000/api/history
+  curl http://127.0.0.1:8000/api/audit/latest
+  ```
+
+### Step 7: How to Abandon a Failed Ticket (Reset Back to Baseline)
+If verification checks fail (e.g. `c_t3_r3_route FAIL`) or you want to restart/cancel a session without recording a score:
+```bash
+# Abandon active ticket and restore golden baseline
+t2t abandon --replay -y
+```
+* **What it does**: Clears the active session lock in `.t2t/state.json`, resets the session FSM from `ACTIVE` back to `IDLE`, and restores all router configurations to the pristine baseline golden state.
+* If you want to see the exact Cisco remediation commands that would solve the ticket:
+  ```bash
+  t2t reveal --replay -y
+  ```
 
 ---
 

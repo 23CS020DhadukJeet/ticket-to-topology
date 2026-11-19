@@ -480,13 +480,20 @@ t2t new-ticket --fault T3 --replay
 # Step 3: Inspect the prefix status matrix
 t2t status --replay
 
-# Step 4: Request a hint if you need guidance
+# Step 4: Request pedagogical mentor hints if you need guidance
 t2t hint
 
-# Step 5: Submit your fix with an explanation
+# Step 5 (Optional): Reveal the reference solution commands if stuck
+t2t reveal --replay -y
+
+# Step 6 (Optional): Abandon active ticket and revert network to baseline
+# Use this command whenever you want to forfeit or restart a failed ticket!
+t2t abandon --replay -y
+
+# Step 7: Submit your fix with an explanation for verification and scoring
 t2t submit --replay -e "Restored distance ospf external 171 on R3 to prevent route feedback loop."
 
-# Step 6: Review your session history and statistics
+# Step 8: Review your session history and performance statistics
 t2t history --stats
 ```
 
@@ -494,27 +501,57 @@ t2t history --stats
 
 ### Mode 3: Live Real-Time Web Dashboard & Topology API
 
-Launch the read-only web server to visualize the network topology in real time:
+The platform includes a built-in read-only web server powered by FastAPI and an interactive SVG topology visualizer.
 
+#### 1. Starting the Web Dashboard
+Launch the server in offline replay mode on port 8000:
 ```bash
 # Launch dashboard locally in replay mode
 t2t web --replay --port 8000
 ```
 
-1. Open your browser to: **`http://127.0.0.1:8000`**
-2. You will see:
-   - **Interactive SVG Topology:** Routers R1, R2, R3, R4 with dynamic link lines.
-   - **Real-Time Link Coloring:** Links automatically turn green when healthy, amber when degraded, and red during an outage.
-   - **Redistribution Prefix Matrix:** Live status of key CCNP prefixes (`10.10.1.0/24`, `10.10.2.0/24`, `10.10.99.0/24`, `172.16.10.0/24`, `172.16.20.16/28`).
-   - **Active Ticket Panel:** Real-time problem description and hint tracker.
-   - **History Table:** Live log of past sessions, scores, and completion times.
+#### 2. Web UI Demonstration Steps (Browser Tour)
+Open your browser to: **`http://127.0.0.1:8000`**
 
-#### Enabling Secure Remote Access
-By default, the server strictly refuses binding to `0.0.0.0`. To allow remote access, you must specify both `--allow-remote` and a token:
+During a presentation or demonstration, walk through the 5 visual sections:
+1. **Interactive SVG Topology:** Routers R1 (Branch), R2 (ASBR-1), R3 (ASBR-2), and R4 (HQ Core) with dynamic link interconnects.
+2. **Real-Time Link Telemetry:** Link lines are dynamically color-coded:
+   - 🟢 **Green:** Verified healthy paths.
+   - 🟡 **Amber:** Suboptimal or asymmetric routing warning.
+   - 🔴 **Red:** Down link, packet blackhole, or routing loop.
+3. **Redistribution Prefix Matrix:** Live 4-router routing table status for key CCNP prefixes (`10.10.1.0/24`, `10.10.2.0/24`, `10.10.99.0/24`, `172.16.10.0/24`, `172.16.20.16/28`), showing protocol, AD, and next-hop IP.
+4. **Active Incident Ticket Panel:** Real-time problem statement, symptom class, target ASBRs, and mentor hint counter.
+5. **Session History Table:** Chronological log of past sessions, scores, and completion times.
+
+#### 3. Interactive OpenAPI / Swagger Documentation
+Navigate to **`http://127.0.0.1:8000/docs`** to demonstrate:
+- Auto-generated OpenAPI schema.
+- Interactive endpoint test console.
+- **Strictly Read-Only Architecture:** Point out to evaluators that all endpoints are strictly `GET`-only (`/api/status`, `/api/session`, `/api/history`, `/api/audit/latest`), ensuring zero risk of unauthorized network configuration changes (AGENTS.md Rule 9).
+
+#### 4. REST API Telemetry Commands (CLI Demonstration)
+Demonstrate how NOC telemetry systems and external tools query the simulator:
+```powershell
+# 1. Query real-time redistribution prefix status across all 4 routers
+curl http://127.0.0.1:8000/api/status
+
+# 2. Query active ticket session details and hint levels
+curl http://127.0.0.1:8000/api/session
+
+# 3. Query candidate score history and timestamped logs
+curl http://127.0.0.1:8000/api/history
+
+# 4. Query latest AST configuration audit findings
+curl http://127.0.0.1:8000/api/audit/latest
+```
+
+#### 5. Enterprise Security: Secure Remote Access & Token Authentication
+By default, the server strictly refuses binding to `0.0.0.0` for safety. To allow remote access, you must specify both `--allow-remote` and a bearer token:
 ```bash
+# Start server with remote access and bearer token
 t2t web --host 0.0.0.0 --port 8000 --allow-remote --token "MySecureToken123" --replay
 ```
-Access the API with authentication:
+Access the protected API with the authorization header:
 ```bash
 curl -H "Authorization: Bearer MySecureToken123" http://localhost:8000/api/status
 ```

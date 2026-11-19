@@ -193,22 +193,28 @@ The platform is driven via the `t2t` CLI:
 t2t demo
 
 # 2. Start a new troubleshooting ticket (Scenario T3)
-t2t new-ticket --fault T3
+t2t new-ticket --fault T3 --replay
 
 # 3. Check current scenario telemetry, timer, and link health
-t2t status
+t2t status --replay
 
 # 4. Run static audit against device configurations
 t2t audit
 
-# 5. Push candidate remediation and evaluate routing invariants
-t2t submit --replay -e "Configured distance ospf external 171 on R3"
-
-# 6. Request Socratic pedagogical guidance for a failed check
+# 5. Request Socratic pedagogical guidance for a failed check
 t2t hint
 
-# 7. Start the read-only web dashboard and view dynamic SVG topology
-t2t web --port 8000
+# 6. Reveal canonical reference solution commands if completely stuck
+t2t reveal --replay -y
+
+# 7. Abandon an active session, reset FSM to IDLE, and restore baseline
+t2t abandon --replay -y
+
+# 8. Push candidate remediation and evaluate routing invariants
+t2t submit --replay -e "Configured distance ospf external 171 on R3"
+
+# 9. Start the read-only web dashboard and view dynamic SVG topology
+t2t web --replay --port 8000
 ```
 
 ---

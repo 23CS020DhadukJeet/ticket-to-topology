@@ -71,12 +71,53 @@ t2t submit --replay -e "Configured distance ospf external 171 on R3 to ensure EI
 
 ```bash
 # -------------------------------------------------------------
-# STEP 6: Launch the Read-Only SVG Web Dashboard
-# Demonstrates real-time visual telemetry and safety guards
+# STEP 5B (Alternative Workflow): Abandoning a Failed Session
+# Demonstrates Session Lifecycle FSM and State Recovery
 # -------------------------------------------------------------
-t2t web --port 8000
+# If a candidate gets stuck, fails checks, or wants to cancel:
+t2t abandon --replay -y
+
+# To reveal reference Cisco remediation commands if completely stuck:
+t2t reveal --replay -y
 ```
-* **What to explain**: *"Finally, we launch `t2t web`. We open `http://127.0.0.1:8000`. The browser renders an interactive SVG topology. Links are dynamically colored green for verified paths, amber for warnings, and red for active failures. Notice that our web API contains ZERO mutation endpoints—it is strictly GET-only to prevent unauthorized network changes."*
+* **What to explain**: *"If verification fails or a candidate wants to abandon the ticket, `t2t abandon --replay -y` safely transitions the FSM from ACTIVE back to IDLE, resets the session timer, and rolls back all router configurations to the golden baseline."*
+
+```bash
+# -------------------------------------------------------------
+# STEP 6: Launch and Demonstrate the Read-Only Web Dashboard
+# Demonstrates real-time visual telemetry, SVG rendering, and API
+# -------------------------------------------------------------
+# 1. Start Web Dashboard in Replay Mode
+t2t web --replay --port 8000
+```
+* **What to explain & show on screen**:
+  1. **Browser UI (`http://127.0.0.1:8000`)**:
+     - *"Here is our real-time network topology visualizer rendered in pure SVG. Routers R1, R2, R3, and R4 are clearly depicted with dynamic links."*
+     - *"Link lines are color-coded in real time: Green for optimal converged paths, Amber for suboptimal or asymmetric routing warnings, and Red for route blackholes."*
+     - *"Below the topology is our Redistribution Prefix Matrix, displaying live protocol, AD, and next-hop status across all 4 routers for key enterprise subnets."*
+     - *"The right pane features our Active Ticket Card and the Historical Attempts Table."*
+  2. **OpenAPI / Swagger Documentation (`http://127.0.0.1:8000/docs`)**:
+     - *"Opening `/docs` displays the auto-generated Swagger UI. Notice our critical architectural design choice: all `/api/*` endpoints are strictly `GET`-only (`/api/status`, `/api/session`, `/api/history`, `/api/audit/latest`). There are ZERO mutation endpoints, mathematically eliminating unauthorized configuration changes via HTTP (AGENTS.md Rule 9)."*
+  3. **Terminal Telemetry Commands (cURL Demo)**:
+     ```powershell
+     # Query prefix reachability matrix across R1-R4
+     curl http://127.0.0.1:8000/api/status
+
+     # Query active troubleshooting ticket and hints
+     curl http://127.0.0.1:8000/api/session
+
+     # Query past session scores and history
+     curl http://127.0.0.1:8000/api/history
+
+     # Query latest static configuration audit findings
+     curl http://127.0.0.1:8000/api/audit/latest
+     ```
+  4. **Enterprise Security & Remote NOC Binding**:
+     - *"By default, the server strictly refuses binding to `0.0.0.0`. For remote NOC integration, an explicit bearer token is required:"*
+     ```powershell
+     t2t web --host 0.0.0.0 --port 8000 --allow-remote --token "MySecureToken" --replay
+     curl -H "Authorization: Bearer MySecureToken" http://localhost:8000/api/status
+     ```
 
 ---
 
