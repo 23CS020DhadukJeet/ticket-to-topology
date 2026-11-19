@@ -29,13 +29,19 @@ class DeviceSession:
         scenario: str = "baseline",
         fixtures_root: Path = Path("tests/fixtures"),
         clock: Clock | None = None,
+        strict_host_keys: bool = False,
     ) -> None:
         self.settings = settings or load_settings()
         self.inventory = inventory or load_inventory(self.settings.t2t_inventory)
         self.read_only = read_only
         self.replay = replay
         self.scenario = scenario
+        if fixtures_root == Path("tests/fixtures") and not fixtures_root.exists():
+            pkg_demo = Path(__file__).resolve().parent.parent / "demo_data"
+            if pkg_demo.exists():
+                fixtures_root = pkg_demo
         self.fixtures_root = fixtures_root
+        self.strict_host_keys = strict_host_keys
         if clock is not None:
             self.clock = clock
         elif replay:
@@ -68,6 +74,7 @@ class DeviceSession:
                     device_type=device_type,
                     read_only=self.read_only,
                     clock=self.clock,
+                    strict_host_keys=self.strict_host_keys,
                 )
 
     def get_device(self, router_name: str) -> Device:

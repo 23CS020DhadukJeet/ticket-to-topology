@@ -69,13 +69,20 @@ def load_settings(env_file: Path | None = None) -> Settings:
 
 def load_inventory(path: Path | None = None) -> Inventory:
     """Load and parse inventory YAML file."""
-    inv_path = path or Path("lab/inventory.yaml")
-    if not inv_path.exists():
-        example_path = Path("lab/inventory.example.yaml")
-        if example_path.exists():
-            inv_path = example_path
+    inv_path: Path | None = None
+    if path and path.exists():
+        inv_path = path
+    elif Path("lab/inventory.yaml").exists():
+        inv_path = Path("lab/inventory.yaml")
+    elif Path("lab/inventory.example.yaml").exists():
+        inv_path = Path("lab/inventory.example.yaml")
+    else:
+        pkg_inv = Path(__file__).resolve().parent / "demo_data" / "inventory.yaml"
+        if pkg_inv.exists():
+            inv_path = pkg_inv
         else:
-            raise FileNotFoundError(f"Inventory file not found: {inv_path}")
+            target = path or Path("lab/inventory.yaml")
+            raise FileNotFoundError(f"Inventory file not found: {target}")
 
     with inv_path.open("r", encoding="utf-8") as f:
         data = yaml.safe_load(f)

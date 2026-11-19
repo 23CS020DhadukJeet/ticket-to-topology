@@ -1,0 +1,5 @@
+Routing entry for 172.16.20.16/28
+  Known via "connected", distance 0, metric 0 (connected, via interface)
+  Routing Descriptor Blocks:
+  * directly connected, via Loopback20
+      Route count is 1, list sub-block of 1

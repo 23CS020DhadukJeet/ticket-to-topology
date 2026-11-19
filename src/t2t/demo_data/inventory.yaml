@@ -1,0 +1,11 @@
+defaults:
+  device_type: cisco_xe
+  golden_path: "flash:golden.cfg"
+routers:
+  - {name: R1, host: 192.168.100.11, role: branch}
+  - {name: R2, host: 192.168.100.12, role: asbr}
+  - {name: R3, host: 192.168.100.13, role: asbr}
+  - {name: R4, host: 192.168.100.14, role: hq}
+interfaces:
+  R2: {to_r1: GigabitEthernet2, to_r4: GigabitEthernet3}
+  R3: {to_r1: GigabitEthernet2, to_r4: GigabitEthernet3}

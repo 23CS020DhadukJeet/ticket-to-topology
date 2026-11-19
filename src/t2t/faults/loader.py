@@ -9,7 +9,7 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, Field, ValidationError
 
-from t2t.config import Inventory
+from t2t.config import Inventory, load_inventory
 from t2t.errors import FaultInvalid
 from t2t.models import Check
 from t2t.verify.engine import validate_check
@@ -104,20 +104,31 @@ def load_fault(path: Path, inventory: Inventory) -> FaultModel:
     return fault
 
 
-def load_catalog(catalog_dir: Path, inventory: Inventory) -> dict[str, FaultModel]:
+def load_catalog(
+    catalog_dir: Path | None = None, inventory: Inventory | None = None
+) -> dict[str, FaultModel]:
     """Load all fault definitions in catalog directory.
 
     Raises:
         FaultInvalid: If duplicate IDs exist or any fault is invalid.
     """
-    if not catalog_dir.is_dir():
-        raise FaultInvalid(f"Catalog directory not found: {catalog_dir}")
+    if catalog_dir is None:
+        dev_dir = Path("src/t2t/faults/catalog")
+        effective_dir = (
+            dev_dir if dev_dir.is_dir() else Path(__file__).resolve().parent / "catalog"
+        )
+    else:
+        effective_dir = catalog_dir
 
+    if not effective_dir.is_dir():
+        raise FaultInvalid(f"Catalog directory not found: {effective_dir}")
+
+    inv = inventory or load_inventory()
     faults: dict[str, FaultModel] = {}
-    yaml_files = sorted(list(catalog_dir.glob("*.yaml")) + list(catalog_dir.glob("*.yml")))
+    yaml_files = sorted(list(effective_dir.glob("*.yaml")) + list(effective_dir.glob("*.yml")))
 
     for f_path in yaml_files:
-        fault = load_fault(f_path, inventory)
+        fault = load_fault(f_path, inv)
         if fault.id in faults:
             raise FaultInvalid(
                 f"Duplicate fault ID '{fault.id}' found in {f_path.name} and another file."
@@ -127,27 +138,37 @@ def load_catalog(catalog_dir: Path, inventory: Inventory) -> dict[str, FaultMode
     return faults
 
 
-def load_baseline_checks(path: Path) -> list[Check]:
+def load_baseline_checks(path: Path | None = None) -> list[Check]:
     """Load oracle baseline checks from YAML file.
 
     Raises:
         FaultInvalid: If file is missing, malformed, or checks are invalid.
     """
-    if not path.is_file():
-        raise FaultInvalid(f"Baseline file not found: {path}")
+    if path is None:
+        dev_file = Path("src/t2t/faults/baseline.yaml")
+        effective_path = (
+            dev_file if dev_file.is_file() else Path(__file__).resolve().parent / "baseline.yaml"
+        )
+    else:
+        effective_path = path
+
+    if not effective_path.is_file():
+        raise FaultInvalid(f"Baseline file not found: {effective_path}")
 
     try:
-        content = path.read_text(encoding="utf-8")
+        content = effective_path.read_text(encoding="utf-8")
         data: Any = yaml.safe_load(content)
     except Exception as err:
-        raise FaultInvalid(f"Failed to parse baseline YAML in {path.name}: {err}") from err
+        raise FaultInvalid(
+            f"Failed to parse baseline YAML in {effective_path.name}: {err}"
+        ) from err
 
     if not isinstance(data, dict) or "checks" not in data:
-        raise FaultInvalid(f"Baseline file {path.name} must contain a 'checks' list.")
+        raise FaultInvalid(f"Baseline file {effective_path.name} must contain a 'checks' list.")
 
     raw_checks = data["checks"]
     if not isinstance(raw_checks, list) or not raw_checks:
-        raise FaultInvalid(f"Baseline checks list in {path.name} must be non-empty.")
+        raise FaultInvalid(f"Baseline checks list in {effective_path.name} must be non-empty.")
 
     checks: list[Check] = []
     for item in raw_checks:
@@ -156,6 +177,6 @@ def load_baseline_checks(path: Path) -> list[Check]:
             validate_check(check)
             checks.append(check)
         except Exception as err:
-            raise FaultInvalid(f"Invalid baseline check in {path.name}: {err}") from err
+            raise FaultInvalid(f"Invalid baseline check in {effective_path.name}: {err}") from err
 
     return checks

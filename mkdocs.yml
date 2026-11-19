@@ -1,0 +1,34 @@
+site_name: Ticket-to-Topology (t2t)
+site_description: Dual-mode troubleshooting and audit platform for EIGRP/OSPF redistribution on Cisco IOS-XE
+site_author: Ticket-to-Topology Contributors
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+  features:
+    - navigation.sections
+    - navigation.tabs
+    - content.code.copy
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - tables
+
+nav:
+  - Overview: index.md
+  - Quick Start: quickstart.md
+  - Architecture: architecture.md
+  - Lab Guide: lab-guide.md
+  - Fault Authoring: fault-authoring.md
+  - Audit Rules: audit-rules.md
+  - Runbook: runbook.md
+  - Performance: performance.md
+  - FAQ: faq.md

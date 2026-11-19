@@ -172,7 +172,9 @@ def generate_ticket(
             AICallRecord(
                 purpose="generate_ticket",
                 provider=type(provider).__name__,
-                model=getattr(provider, "model", "none"),
+                model=getattr(provider, "model", "none")
+                if isinstance(getattr(provider, "model", None), str)
+                else "none",
                 prompt_version=PROMPT_VERSION,
                 latency_ms=int((time.perf_counter() - t_start) * 1000),
                 ok=False,
@@ -186,7 +188,9 @@ def generate_ticket(
         AICallRecord(
             purpose="generate_ticket",
             provider=type(provider).__name__,
-            model=getattr(provider, "model", "none"),
+            model=getattr(provider, "model", "none")
+            if isinstance(getattr(provider, "model", None), str)
+            else "none",
             prompt_version=PROMPT_VERSION,
             latency_ms=latency_ms,
             ok=ok,

@@ -1,0 +1,31 @@
+services:
+  t2t:
+    build: .
+    env_file: .env
+    environment:
+      T2T_INVENTORY: /home/t2t/inventory.yaml
+    volumes:
+      - t2t-data:/data
+      - ./lab/inventory.yaml:/home/t2t/inventory.yaml:ro
+    network_mode: host
+  t2t-web:
+    build: .
+    command: ["web", "--host", "0.0.0.0", "--allow-remote", "--token", "${T2T_WEB_TOKEN}"]
+    environment:
+      T2T_INVENTORY: /home/t2t/inventory.yaml
+      T2T_WEB_TOKEN: ${T2T_WEB_TOKEN:-changeme}
+    ports:
+      - "8000:8000"
+    volumes:
+      - t2t-data:/data
+      - ./lab/inventory.yaml:/home/t2t/inventory.yaml:ro
+    profiles: [web]
+  ollama:
+    image: ollama/ollama
+    profiles: [ai]
+    volumes:
+      - ollama:/root/.ollama
+    ports: ["11434:11434"]
+volumes:
+  t2t-data:
+  ollama:

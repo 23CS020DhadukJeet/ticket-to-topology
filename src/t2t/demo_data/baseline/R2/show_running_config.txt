@@ -1,0 +1,26 @@
+hostname R2
+router eigrp 100
+ network 10.1.12.0 0.0.0.255
+ redistribute ospf 1 metric 10000 100 255 1 1500 route-map OSPF-TO-EIGRP
+!
+router ospf 1
+ router-id 2.2.2.2
+ network 10.1.24.0 0.0.0.255 area 0
+ redistribute eigrp 100 subnets route-map EIGRP-TO-OSPF
+ distance ospf external 171
+!
+ip prefix-list HQ-NETS seq 10 permit 172.16.10.0/24
+ip prefix-list HQ-NETS seq 20 permit 172.16.20.16/28
+!
+route-map EIGRP-TO-OSPF deny 10
+ match tag 200
+!
+route-map EIGRP-TO-OSPF permit 20
+ set tag 100
+!
+route-map OSPF-TO-EIGRP deny 10
+ match tag 100
+!
+route-map OSPF-TO-EIGRP permit 20
+ match ip address prefix-list HQ-NETS
+ set tag 200

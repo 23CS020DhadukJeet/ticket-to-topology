@@ -21,7 +21,7 @@ def test_u0_2_version() -> None:
     runner = CliRunner()
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
-    assert "t2t 0.1.0" in result.output
+    assert "t2t 1.0.0" in result.output
 
 
 def test_version_fallback() -> None:
@@ -29,7 +29,7 @@ def test_version_fallback() -> None:
     from t2t.cli.app import _get_version
 
     with patch("t2t.cli.app.version", side_effect=importlib.metadata.PackageNotFoundError):
-        assert _get_version() == "0.1.0"
+        assert _get_version() == "1.0.0"
 
 
 def test_doctor_help() -> None:

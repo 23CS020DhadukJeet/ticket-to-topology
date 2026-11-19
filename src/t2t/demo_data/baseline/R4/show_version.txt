@@ -1,0 +1,12 @@
+Cisco IOS XE Software, Version 17.09.04a
+Cisco IOS Software [Cupertino], Virtual XE Software (X86_64_LINUX_IOSD-UNIVERSALK9-M), Version 17.9.4a, RELEASE SOFTWARE (fc2)
+Technical Support: http://www.cisco.com/techsupport
+Copyright (c) 1986-2023 by Cisco Systems, Inc.
+Compiled Wed 22-Mar-23 04:36 by mcpre
+ROM: IOS-XE ROMMON
+
+R4 uptime is 2 hours, 15 minutes
+Uptime for this control processor is 2 hours, 18 minutes
+System returned to ROM by reload
+System image file is "bootflash:packages.conf"
+Last reload reason: Normal Reload

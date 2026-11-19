@@ -1,0 +1,8 @@
+router eigrp 100
+ network 10.10.1.0 0.0.0.255
+ network 10.10.2.0 0.0.0.255
+ network 10.1.12.0 0.0.0.255
+ network 10.1.13.0 0.0.0.255
+ redistribute connected route-map VENDOR-CONN
+route-map VENDOR-CONN permit 10
+ match interface Loopback99

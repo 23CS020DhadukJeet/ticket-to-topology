@@ -100,7 +100,13 @@ class SessionService:
         """Load fault model from catalog."""
         path = Path(f"src/t2t/faults/catalog/{fault_id}.yaml")
         if not path.is_file():
-            raise T2TError(f"Fault catalog entry '{fault_id}' not found.")
+            pkg_path = (
+                Path(__file__).resolve().parent.parent / "faults" / "catalog" / f"{fault_id}.yaml"
+            )
+            if pkg_path.is_file():
+                path = pkg_path
+            else:
+                raise T2TError(f"Fault catalog entry '{fault_id}' not found.")
         return load_fault(path, self.inventory)
 
     def start_ticket(
@@ -123,6 +129,8 @@ class SessionService:
 
         # 1. Resolve fault to inject
         catalog_dir = Path("src/t2t/faults/catalog")
+        if not catalog_dir.is_dir():
+            catalog_dir = Path(__file__).resolve().parent.parent / "faults" / "catalog"
         catalog = load_catalog(catalog_dir, self.inventory)
         if not catalog:
             raise T2TError("No faults found in catalog.")

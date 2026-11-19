@@ -1,0 +1,6 @@
+Routing entry for 10.10.1.0/24
+  Known via "ospf 1", distance 110, metric 11, type extern 2, forward metric 1
+  Route tag 100
+  Routing Descriptor Blocks:
+  * 10.1.24.1, from 10.1.24.1, 02:14:00 ago, via GigabitEthernet2
+      Route metric is 11, traffic share count is 1

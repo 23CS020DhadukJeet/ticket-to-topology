@@ -32,6 +32,7 @@ class NetmikoDevice:
         read_timeout: float = 30.0,
         read_only: bool = False,
         clock: Clock | None = None,
+        strict_host_keys: bool = False,
     ) -> None:
         self.name = name
         self.host = host
@@ -44,6 +45,7 @@ class NetmikoDevice:
         self.read_timeout = read_timeout
         self.read_only = read_only
         self.clock: Clock = clock if clock is not None else SystemClock()
+        self.strict_host_keys = strict_host_keys
         self._connection: Any = None
 
     def _connect(self) -> Any:
@@ -56,15 +58,20 @@ class NetmikoDevice:
 
         for attempt in range(1, attempts + 1):
             try:
-                conn = ConnectHandler(
-                    device_type=self.device_type,
-                    host=self.host,
-                    username=self.username,
-                    password=self.password,
-                    conn_timeout=self.conn_timeout,
-                    auth_timeout=self.auth_timeout,
-                    banner_timeout=self.banner_timeout,
-                )
+                connect_kwargs: dict[str, Any] = {
+                    "device_type": self.device_type,
+                    "host": self.host,
+                    "username": self.username,
+                    "password": self.password,
+                    "conn_timeout": self.conn_timeout,
+                    "auth_timeout": self.auth_timeout,
+                    "banner_timeout": self.banner_timeout,
+                }
+                if self.strict_host_keys:
+                    connect_kwargs["system_host_keys"] = True
+                    connect_kwargs["ssh_strict"] = True
+
+                conn = ConnectHandler(**connect_kwargs)
                 self._connection = conn
                 return conn
             except NetmikoAuthenticationException as err:

@@ -1,0 +1,17 @@
+route-map EIGRP-TO-OSPF, deny, sequence 10
+  Match clauses:
+    tag 200
+  Set clauses:
+route-map EIGRP-TO-OSPF, permit, sequence 20
+  Match clauses:
+  Set clauses:
+    tag 100
+route-map OSPF-TO-EIGRP, deny, sequence 10
+  Match clauses:
+    tag 100
+  Set clauses:
+route-map OSPF-TO-EIGRP, permit, sequence 20
+  Match clauses:
+    ip address prefix-list HQ-NETS
+  Set clauses:
+    tag 200

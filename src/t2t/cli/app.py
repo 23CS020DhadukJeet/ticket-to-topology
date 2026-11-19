@@ -56,7 +56,7 @@ def _get_version() -> str:
     try:
         return version("ticket-to-topology")
     except PackageNotFoundError:
-        return "0.1.0"
+        return "1.0.0"
 
 
 def version_callback(value: bool) -> None:
@@ -76,6 +76,13 @@ def main(
             help="Run in offline replay mode using recorded fixtures.",
         ),
     ] = False,
+    debug: Annotated[
+        bool,
+        typer.Option(
+            "--debug",
+            help="Show full Python tracebacks on error.",
+        ),
+    ] = False,
     version: Annotated[
         bool | None,
         typer.Option(
@@ -90,6 +97,35 @@ def main(
     """Ticket-to-Topology CLI root."""
     ctx.ensure_object(dict)
     ctx.obj["replay"] = replay
+    ctx.obj["debug"] = debug
+
+
+def handle_cli_error(err: Exception, ctx: typer.Context | None = None) -> None:
+    """Handle CLI errors with friendly messages and stable exit codes.
+
+    If global --debug is enabled, prints full traceback instead.
+    """
+    debug = False
+    if ctx and hasattr(ctx, "obj") and isinstance(ctx.obj, dict):
+        debug = bool(ctx.obj.get("debug", False))
+
+    console = get_console()
+    if isinstance(err, T2TError):
+        if debug:
+            import traceback
+
+            traceback.print_exc()
+        else:
+            console.print(f"[bold red]Error:[/bold red] {err}")
+        raise typer.Exit(code=err.exit_code) from err
+    else:
+        if debug:
+            import traceback
+
+            traceback.print_exc()
+        else:
+            console.print(f"[bold red]Unexpected error:[/bold red] {err}")
+        raise typer.Exit(code=1) from err
 
 
 def _get_service(
@@ -170,12 +206,10 @@ def new_ticket(
             "\n[dim]Investigate the topology using 't2t status' or router show commands. "
             "Need help? Run 't2t hint'. Ready to submit? Run 't2t submit'.[/dim]"
         )
-    except T2TError as err:
-        console.print(f"[bold red]Error:[/bold red] {err}")
-        raise typer.Exit(code=err.exit_code) from err
+    except typer.Exit:
+        raise
     except Exception as err:
-        console.print(f"[bold red]Unexpected error:[/bold red] {err}")
-        raise typer.Exit(code=1) from err
+        handle_cli_error(err, ctx)
 
 
 @app.command("hint")
@@ -200,12 +234,10 @@ def hint(
             is_max=is_max,
         )
         console.print(card)
-    except T2TError as err:
-        console.print(f"[bold red]Error:[/bold red] {err}")
-        raise typer.Exit(code=err.exit_code) from err
+    except typer.Exit:
+        raise
     except Exception as err:
-        console.print(f"[bold red]Unexpected error:[/bold red] {err}")
-        raise typer.Exit(code=1) from err
+        handle_cli_error(err, ctx)
 
 
 @app.command("submit")
@@ -269,12 +301,8 @@ def submit(
             )
     except typer.Exit:
         raise
-    except T2TError as err:
-        console.print(f"[bold red]Error:[/bold red] {err}")
-        raise typer.Exit(code=err.exit_code) from err
     except Exception as err:
-        console.print(f"[bold red]Unexpected error:[/bold red] {err}")
-        raise typer.Exit(code=1) from err
+        handle_cli_error(err, ctx)
 
 
 @app.command("abandon")
@@ -318,9 +346,8 @@ def abandon(
         )
     except typer.Exit:
         raise
-    except T2TError as err:
-        console.print(f"[bold red]Error:[/bold red] {err}")
-        raise typer.Exit(code=err.exit_code) from err
+    except Exception as err:
+        handle_cli_error(err, ctx)
 
 
 @app.command("history")
@@ -469,6 +496,7 @@ def doctor(
             help="Run doctor checks offline using frozen test fixtures.",
         ),
     ] = False,
+    fixtures_root: Path | None = None,
 ) -> None:
     """Check connectivity and environment health across all lab routers."""
     console = Console()
@@ -492,9 +520,16 @@ def doctor(
     all_passed = True
     golden_path_default = inventory.defaults.get("golden_path", "flash:golden.cfg")
 
-    with DeviceSession(
-        inventory=inventory, settings=settings, read_only=True, replay=replay
-    ) as session:
+    session_kwargs: dict[str, Any] = {
+        "inventory": inventory,
+        "settings": settings,
+        "read_only": True,
+        "replay": replay,
+    }
+    if fixtures_root is not None:
+        session_kwargs["fixtures_root"] = fixtures_root
+
+    with DeviceSession(**session_kwargs) as session:
         for router in inventory.routers:
             r_name = router.name
             golden_path = router.golden_path or golden_path_default
@@ -612,38 +647,53 @@ def status(
     effective_replay = replay or global_replay
 
     try:
+        service = _get_service(ctx, effective_replay)
+        active_state = service.get_active_state()
+        if active_state:
+            console.print(
+                f"[bold cyan]Active Ticket:[/bold cyan] {active_state.fault_id} "
+                f"(Level {active_state.level}) | Hints used: {active_state.hint_level}"
+            )
+            console.print()
+    except typer.Exit:
+        raise
+    except Exception as err:
+        handle_cli_error(err, ctx)
+
+    try:
         settings = load_settings()
         inventory = load_inventory(settings.t2t_inventory)
-    except Exception as err:
-        console.print(f"[bold red]Configuration error:[/bold red] {err}")
-        raise typer.Exit(code=1) from err
 
-    table = Table(title="Redistribution Status: Key Prefixes", show_lines=True)
-    table.add_column("Prefix", style="bold cyan")
-    for r in inventory.routers:
-        table.add_column(r.name, justify="center")
+        table = Table(title="Redistribution Status: Key Prefixes", show_lines=True)
+        table.add_column("Prefix", style="bold cyan")
+        for r in inventory.routers:
+            table.add_column(r.name, justify="center")
 
-    with DeviceSession(
-        inventory=inventory, settings=settings, read_only=True, replay=effective_replay
-    ) as session:
-        for prefix_label, prefix_cmd in KEY_PREFIXES:
-            row: list[str] = [prefix_label]
-            for r in inventory.routers:
-                try:
-                    out = session.show(r.name, f"show ip route {prefix_cmd}")
-                    route = parse_route_detail(out)
-                    if route is None:
+        with DeviceSession(
+            inventory=inventory, settings=settings, read_only=True, replay=effective_replay
+        ) as session:
+            for prefix_label, prefix_cmd in KEY_PREFIXES:
+                row: list[str] = [prefix_label]
+                for r in inventory.routers:
+                    try:
+                        out = session.show(r.name, f"show ip route {prefix_cmd}")
+                        route = parse_route_detail(out)
+                        if route is None:
+                            row.append("[bold red]MISSING[/bold red]")
+                        else:
+                            tag_str = f" tag {route.tag}" if route.tag is not None else ""
+                            hops_str = f" via {route.next_hops[0].ip}" if route.next_hops else ""
+                            proto_str = f"[green]{route.protocol.upper()}[/green]"
+                            row.append(f"{proto_str} ({route.distance}){tag_str}{hops_str}")
+                    except T2TError:
                         row.append("[bold red]MISSING[/bold red]")
-                    else:
-                        tag_str = f" tag {route.tag}" if route.tag is not None else ""
-                        hops_str = f" via {route.next_hops[0].ip}" if route.next_hops else ""
-                        proto_str = f"[green]{route.protocol.upper()}[/green]"
-                        row.append(f"{proto_str} ({route.distance}){tag_str}{hops_str}")
-                except T2TError:
-                    row.append("[bold red]MISSING[/bold red]")
-            table.add_row(*row)
+                table.add_row(*row)
 
-    console.print(table)
+        console.print(table)
+    except typer.Exit:
+        raise
+    except Exception as err:
+        handle_cli_error(err, ctx)
 
 
 @app.command()
@@ -676,6 +726,8 @@ def reset(
         console.print("[yellow]Cleared active fault state and lock files (--force).[/yellow]")
 
     baseline_path = Path("src/t2t/faults/baseline.yaml")
+    if not baseline_path.is_file():
+        baseline_path = Path(__file__).resolve().parent.parent / "faults" / "baseline.yaml"
     baseline_checks = load_baseline_checks(baseline_path) if baseline_path.exists() else []
 
     statuses: dict[str, Any] = {}
@@ -779,6 +831,13 @@ def reveal(
         settings = load_settings()
         inventory = load_inventory(settings.t2t_inventory)
         fault_path = Path(f"src/t2t/faults/catalog/{state.active_fault}.yaml")
+        if not fault_path.is_file():
+            fault_path = (
+                Path(__file__).resolve().parent.parent
+                / "faults"
+                / "catalog"
+                / f"{state.active_fault}.yaml"
+            )
         fault = load_fault(fault_path, inventory)
     except Exception as err:
         console.print(f"[bold red]Error loading active fault:[/bold red] {err}")
@@ -832,8 +891,14 @@ def qualify(
     try:
         settings = load_settings()
         inventory = load_inventory(settings.t2t_inventory)
-        catalog = load_catalog(Path("src/t2t/faults/catalog"), inventory)
-        baseline_checks = load_baseline_checks(Path("src/t2t/faults/baseline.yaml"))
+        cat_dir = Path("src/t2t/faults/catalog")
+        if not cat_dir.is_dir():
+            cat_dir = Path(__file__).resolve().parent.parent / "faults" / "catalog"
+        base_path = Path("src/t2t/faults/baseline.yaml")
+        if not base_path.is_file():
+            base_path = Path(__file__).resolve().parent.parent / "faults" / "baseline.yaml"
+        catalog = load_catalog(cat_dir, inventory)
+        baseline_checks = load_baseline_checks(base_path)
     except Exception as err:
         console.print(f"[bold red]Configuration error:[/bold red] {err}")
         raise typer.Exit(code=1) from err
@@ -1008,6 +1073,171 @@ def audit(
     # Exit code: 0 if passed (no findings at or above fail_on threshold), 1 if failed
     if not report.passed:
         raise typer.Exit(code=1)
+
+
+@app.command()
+def demo() -> None:
+    """Run an automated scripted demonstration using packaged demo fixtures."""
+    import contextlib
+
+    console = get_console()
+    console.print(
+        "\n[bold cyan]═══════════════════════════════════════════════════════════════[/bold cyan]"
+    )
+    console.print(
+        "[bold cyan]  Ticket-to-Topology (t2t) End-to-End Replay Demonstration   [/bold cyan]"
+    )
+    console.print(
+        "[bold cyan]═══════════════════════════════════════════════════════════════[/bold cyan]"
+    )
+    console.print(
+        "[dim]Running offline walkthrough with packaged fixtures (no routers required)...\n[/dim]"
+    )
+
+    demo_root = Path(__file__).resolve().parent.parent / "demo_data"
+    if not demo_root.exists():
+        console.print(f"[bold red]Demo fixtures not found at {demo_root}[/bold red]")
+        raise typer.Exit(code=1)
+
+    demo_inv = demo_root / "inventory.yaml"
+    settings = load_settings()
+    inventory = load_inventory(demo_inv if demo_inv.exists() else settings.t2t_inventory)
+
+    # 1. Doctor Health Check
+    console.print("[bold yellow]► Step 1: Pre-flight Environment Doctor Check[/bold yellow]")
+    with contextlib.suppress(typer.Exit):
+        doctor(replay=True, fixtures_root=demo_root)
+    console.print()
+
+    # 2. Start Ticket
+    console.print(
+        "[bold yellow]► Step 2: Injecting Fault T3 & Generating Incident Ticket[/bold yellow]"
+    )
+    service = SessionService(
+        settings=settings,
+        inventory=inventory,
+        replay=True,
+        fixtures_root=demo_root,
+    )
+    active_state, ticket_text = service.start_ticket(fault_id="T3", no_ai=True)
+    fault_model = service._load_fault("T3")
+    ticket_card = render_ticket_card(
+        ticket_text=ticket_text,
+        fault_id=active_state.fault_id,
+        level=active_state.level,
+        symptom_class=fault_model.symptom_class,
+        flows=fault_model.flows,
+    )
+    console.print(ticket_card)
+    console.print()
+
+    # 3. Routing Table Status
+    console.print("[bold yellow]► Step 3: Inspecting Prefix Routing Status[/bold yellow]")
+    with contextlib.suppress(typer.Exit):
+        status(replay=True)
+    console.print()
+
+    # 4. Mentor Guidance
+    console.print("[bold yellow]► Step 4: Requesting Pedagogical Mentor Guidance[/bold yellow]")
+    lvl, hint_text, penalty, is_max = service.get_hint()
+    hint_card = render_hint_card(
+        hint_text=hint_text,
+        level=lvl,
+        penalty=penalty,
+        is_max=is_max,
+    )
+    console.print(hint_card)
+    console.print()
+
+    # 5. Applying Fix
+    console.print("[bold yellow]► Step 5: Applying Candidate Remediation Commands[/bold yellow]")
+    console.print("  [bold cyan]Router R3 Configuration Push:[/bold cyan]")
+    console.print("    [green]router ospf 1[/green]")
+    console.print("    [green]distance ospf external 171[/green]")
+    console.print()
+
+    # 6. Submit & Verify
+    console.print("[bold yellow]► Step 6: Verifying Remediation, Drift & Score[/bold yellow]")
+    from unittest.mock import patch
+
+    with patch.object(service, "_create_device_session") as mock_sess:
+        mock_sess.side_effect = lambda: DeviceSession(
+            inventory=inventory,
+            replay=True,
+            scenario="baseline",
+            fixtures_root=demo_root,
+        )
+        passed, check_results, drift_report, score, feedback = service.submit_explanation(
+            "Restored distance ospf external 171 on R3 to ensure EIGRP external path is preferred."
+        )
+
+    table = render_check_results(check_results)
+    console.print(table)
+    console.print()
+
+    if score and drift_report:
+        card = render_closing_card(
+            score=score,
+            drift=drift_report,
+            feedback=feedback,
+        )
+        console.print(card)
+
+    # 7. Cleanup
+    with contextlib.suppress(Exception):
+        service.abandon_session()
+
+    console.print("\n[bold green]✓ Demo completed successfully! Package verified.[/bold green]\n")
+
+
+@app.command()
+def web(
+    ctx: typer.Context,
+    host: Annotated[str, typer.Option("--host", help="Bind host address.")] = "127.0.0.1",
+    port: Annotated[int, typer.Option("--port", help="Bind port number.")] = 8000,
+    allow_remote: Annotated[
+        bool, typer.Option("--allow-remote", help="Allow binding to 0.0.0.0 if token is set.")
+    ] = False,
+    token: Annotated[
+        str | None,
+        typer.Option("--token", help="Bearer token for API access (or via T2T_WEB_TOKEN env)."),
+    ] = None,
+    replay: Annotated[
+        bool,
+        typer.Option("--replay", help="Run web dashboard in offline replay mode."),
+    ] = False,
+) -> None:
+    """Launch read-only web dashboard and API server."""
+    from t2t.web.app import create_app, validate_bind_address
+
+    effective_token = token or os.environ.get("T2T_WEB_TOKEN")
+    global_replay = False
+    if ctx and hasattr(ctx, "obj") and isinstance(ctx.obj, dict):
+        global_replay = bool(ctx.obj.get("replay", False))
+    effective_replay = replay or global_replay
+
+    try:
+        bind_host = validate_bind_address(
+            host=host, allow_remote=allow_remote, token=effective_token
+        )
+    except ValueError as e:
+        console = get_console()
+        console.print(f"[bold red]Configuration error:[/bold red] {e}")
+        raise typer.Exit(code=2) from e
+
+    import uvicorn
+
+    web_app = create_app(replay=effective_replay, token=effective_token)
+    console = get_console()
+    console.print(
+        f"[bold green]Starting t2t Web Dashboard on http://{bind_host}:{port}[/bold green]"
+    )
+    if effective_replay:
+        console.print("[yellow]Running in replay mode (offline fixtures)[/yellow]")
+    if effective_token:
+        console.print("[cyan]Bearer token authentication enabled[/cyan]")
+
+    uvicorn.run(web_app, host=bind_host, port=port)
 
 
 if __name__ == "__main__":

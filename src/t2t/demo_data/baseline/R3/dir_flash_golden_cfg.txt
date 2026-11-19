@@ -1,0 +1,5 @@
+Directory of flash:/golden.cfg
+
+12345  -rw-        3412  Nov 17 2026 00:00:00 +00:00  golden.cfg
+
+1073741824 bytes total (789456789 bytes free)

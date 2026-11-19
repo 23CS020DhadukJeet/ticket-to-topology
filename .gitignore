@@ -3,7 +3,7 @@
 lab/inventory.yaml
 lab/golden/rendered/
 *.db
-reports/
+reports/test_*.docx
 .coverage
 htmlcov/
 __pycache__/
